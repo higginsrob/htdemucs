@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demucs - Audio Stem Separator</title>
+    <link rel="stylesheet" href="/css/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 Demucs Audio Separator</h1>
+            <p class="subtitle">Separate your audio tracks into individual stems</p>
+        </header>
+
+        <main>
+            <!-- Upload Section -->
+            <section class="upload-section" id="upload-section">
+                <div class="card">
+                    <h2>Upload Audio File</h2>
+                    
+                    <form id="upload-form">
+                        <div class="form-group">
+                            <label for="audio-file" class="file-label">
+                                <span class="file-icon">📁</span>
+                                <span id="file-name">Choose an audio file...</span>
+                                <input type="file" id="audio-file" accept=".mp3,.wav,.flac,.m4a,.ogg,.opus" required>
+                            </label>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="model">Model Quality</label>
+                                <select id="model">
+                                    <option value="htdemucs_ft" selected>High Quality (Recommended)</option>
+                                    <option value="htdemucs">Standard Quality</option>
+                                    <option value="htdemucs_6s">High Quality (6 Stems)</option>
+                                    <option value="mdx_extra">Fast Processing</option>
+                                </select>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="output-format">Output Format</label>
+                                <select id="output-format">
+                                    <option value="mp3" selected>MP3</option>
+                                    <option value="wav">WAV</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="stems">Extract Stems</label>
+                            <select id="stems">
+                                <option value="all" selected>All Stems (Bass, Drums, Vocals, Other)</option>
+                                <option value="vocals">Vocals Only</option>
+                                <option value="drums">Drums Only</option>
+                                <option value="bass">Bass Only</option>
+                                <option value="other">Other Only</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn btn-primary" id="submit-btn">
+                            <span>🎯 Separate Stems</span>
+                        </button>
+                    </form>
+
+                    <div class="file-info">
+                        <p><strong>Supported formats:</strong> MP3, WAV, FLAC, M4A, OGG, Opus</p>
+                        <p><strong>Max file size:</strong> 100MB</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Progress Section -->
+            <section class="progress-section" id="progress-section" style="display: none;">
+                <div class="card">
+                    <h2>Processing Audio</h2>
+                    <p class="processing-file"></p>
+                    
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progress-fill"></div>
+                        </div>
+                        <div class="progress-text" id="progress-text">0%</div>
+                    </div>
+
+                    <div class="status-message" id="status-message">
+                        Initializing...
+                    </div>
+
+                    <div class="processing-info">
+                        <p>⏱️ This may take a few minutes depending on file size and system resources.</p>
+                        <p>💡 Progress updates are provided in real-time via WebSocket.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Result Section -->
+            <section class="result-section" id="result-section" style="display: none;">
+                <div class="card">
+                    <h2>✅ Processing Complete!</h2>
+                    <p class="success-message">Your audio has been successfully separated into stems.</p>
+                    
+                    <div class="result-info" id="result-info"></div>
+
+                    <div class="button-group">
+                        <button class="btn btn-success" id="download-btn">
+                            <span>⬇️ Download Stems (ZIP)</span>
+                        </button>
+                        <button class="btn btn-secondary" id="new-upload-btn">
+                            <span>🔄 Process Another File</span>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Error Section -->
+            <section class="error-section" id="error-section" style="display: none;">
+                <div class="card error-card">
+                    <h2>❌ Processing Failed</h2>
+                    <p class="error-message" id="error-message"></p>
+                    
+                    <button class="btn btn-secondary" id="retry-btn">
+                        <span>🔄 Try Again</span>
+                    </button>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Powered by <a href="https://github.com/adefossez/demucs" target="_blank">Demucs</a> | 
+               Made with ❤️ for audio enthusiasts</p>
+        </footer>
+    </div>
+
+    <script src="/js/app.js"></script>
+</body>
+</html>
+

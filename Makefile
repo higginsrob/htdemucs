@@ -92,3 +92,52 @@ clean-docker: ## Remove the docker image (will rebuild on next run)
 .SILENT:
 clean-all: ## Remove everything (outputs, models, and docker image)
 	@./scripts/clean.sh --all
+
+.PHONY:
+.SILENT:
+server-build: build ## Build the production web server image
+	@echo "Building demucs web server image..."
+	@cd server && docker build -t demucs-server:latest .
+	@echo "Server image built successfully!"
+
+.PHONY:
+.SILENT:
+server-run: ## Run the production web server (port 8080)
+	@echo "Starting demucs web server on http://localhost:8080"
+	@docker run -d --rm \
+		--name=demucs-server \
+		-p 8080:8080 \
+		-v $(current-dir)demucs/models:/data/models \
+		demucs-server:latest
+	@echo "Server started! View logs with: make server-logs"
+	@echo "Open in browser: http://localhost:8080"
+
+.PHONY:
+.SILENT:
+server-run-gpu: ## Run the production web server with GPU support
+	@echo "Starting demucs web server with GPU on http://localhost:8080"
+	@docker run -d --rm \
+		--name=demucs-server \
+		--gpus all \
+		-p 8080:8080 \
+		-v $(current-dir)demucs/models:/data/models \
+		demucs-server:latest
+	@echo "Server started! View logs with: make server-logs"
+	@echo "Open in browser: http://localhost:8080"
+
+.PHONY:
+.SILENT:
+server-dev: ## Run the server in development mode (with hot reload)
+	@echo "Starting demucs server in development mode..."
+	@cd server && python3 -m app.server
+
+.PHONY:
+.SILENT:
+server-stop: ## Stop the running server container
+	@docker stop demucs-server 2>/dev/null || true
+	@echo "Server stopped"
+
+.PHONY:
+.SILENT:
+server-logs: ## Show server logs
+	@docker logs -f demucs-server

@@ -1,0 +1,26 @@
+# Web Framework
+flask==3.0.0
+flask-cors==4.0.0
+
+# Real-time communication
+flask-socketio==5.3.5
+python-socketio==5.10.0
+python-engineio==4.8.0
+
+# WebSocket support
+gevent==23.9.1
+gevent-websocket==0.10.1
+
+# HTTP client for health checks
+requests==2.31.0
+
+# Environment configuration
+python-dotenv==1.0.0
+
+# Data validation
+pydantic==2.5.0
+
+# File handling
+werkzeug==3.0.1
+python-magic==0.4.27
+

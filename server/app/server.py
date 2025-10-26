@@ -17,6 +17,7 @@ from werkzeug.utils import secure_filename
 
 from app.services.demucs_processor import DemucsProcessor
 from app.services.job_manager import JobManager
+from app.services.youtube_service import YouTubeService
 from app.utils.validation import validate_audio_file, ValidationError
 
 # Configure logging
@@ -46,6 +47,7 @@ socketio = SocketIO(
 # Initialize services
 job_manager = JobManager()
 demucs_processor = DemucsProcessor(socketio, job_manager)
+youtube_service = YouTubeService()
 
 # Supported audio formats
 ALLOWED_EXTENSIONS = {'mp3', 'wav', 'flac', 'm4a', 'ogg', 'opus'}
@@ -193,6 +195,142 @@ def upload_audio():
         
     except Exception as e:
         logger.error(f"Upload error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/youtube', methods=['POST'])
+def process_youtube():
+    """
+    Process YouTube video or playlist
+    
+    JSON body:
+        url: String (required) - YouTube video or playlist URL
+        model: String (optional) - Model to use (default: htdemucs_ft)
+        output_format: String (optional) - Output format: mp3 or wav (default: mp3)
+        stems: String (optional) - Stems to extract: all, bass, drums, vocals, other (default: all)
+    
+    Returns:
+        For single video: JSON with job_id
+        For playlist: JSON with array of job_ids
+    """
+    try:
+        data = request.get_json()
+        
+        if not data or 'url' not in data:
+            return jsonify({'error': 'YouTube URL is required'}), 400
+        
+        url = data['url']
+        
+        # Validate YouTube URL
+        if not youtube_service.is_youtube_url(url):
+            return jsonify({'error': 'Invalid YouTube URL'}), 400
+        
+        # Get optional parameters
+        model = data.get('model', 'htdemucs_ft')
+        output_format = data.get('output_format', 'mp3')
+        stems = data.get('stems', 'all')
+        
+        # Validate model
+        if model not in SUPPORTED_MODELS:
+            return jsonify({
+                'error': f'Invalid model. Supported models: {", ".join(SUPPORTED_MODELS.keys())}'
+            }), 400
+        
+        # Validate output format
+        if output_format not in ['mp3', 'wav']:
+            return jsonify({'error': 'Invalid output format. Use mp3 or wav'}), 400
+        
+        # Validate stems
+        valid_stems = ['all', 'bass', 'drums', 'vocals', 'other']
+        if stems not in valid_stems:
+            return jsonify({
+                'error': f'Invalid stems option. Valid options: {", ".join(valid_stems)}'
+            }), 400
+        
+        # Check if it's a playlist or single video
+        is_playlist, playlist_id = youtube_service.is_playlist(url)
+        
+        if is_playlist:
+            # Process playlist - create jobs for all videos
+            logger.info(f"Processing YouTube playlist: {url}")
+            videos = youtube_service.get_playlist_videos(url)
+            
+            if not videos:
+                return jsonify({'error': 'Could not extract videos from playlist'}), 400
+            
+            jobs = []
+            for idx, video in enumerate(videos, 1):
+                # Create job for each video
+                filename = f"{video['title']}.mp3"  # Will be updated when downloaded
+                job = job_manager.create_job(
+                    filename=filename,
+                    model=model,
+                    output_format=output_format,
+                    stems=stems,
+                    source_type='youtube',
+                    youtube_url=video['url'],
+                    playlist_id=playlist_id,
+                    playlist_position=idx
+                )
+                
+                # Start processing (will be queued)
+                demucs_processor.process_job(job.job_id)
+                
+                jobs.append({
+                    'job_id': job.job_id,
+                    'title': video['title'],
+                    'position': idx,
+                    'status': job.status
+                })
+            
+            logger.info(f"Created {len(jobs)} jobs for playlist {playlist_id}")
+            
+            return jsonify({
+                'type': 'playlist',
+                'playlist_id': playlist_id,
+                'total_videos': len(jobs),
+                'jobs': jobs,
+                'message': f'Added {len(jobs)} videos to processing queue'
+            }), 201
+        
+        else:
+            # Single video
+            logger.info(f"Processing YouTube video: {url}")
+            
+            # Get video metadata
+            metadata = youtube_service.get_video_metadata(url)
+            if not metadata:
+                return jsonify({'error': 'Could not extract video information'}), 400
+            
+            # Create job
+            filename = f"{metadata.title}.mp3"  # Will be updated when downloaded
+            job = job_manager.create_job(
+                filename=filename,
+                model=model,
+                output_format=output_format,
+                stems=stems,
+                source_type='youtube',
+                youtube_url=url,
+                youtube_metadata=metadata.__dict__
+            )
+            
+            # Start processing (will be queued)
+            demucs_processor.process_job(job.job_id)
+            
+            logger.info(f"Job {job.job_id} created for YouTube video: {metadata.title}")
+            
+            return jsonify({
+                'type': 'video',
+                'job_id': job.job_id,
+                'status': job.status,
+                'created_at': job.created_at.isoformat(),
+                'title': metadata.title,
+                'duration': metadata.duration,
+                'model': model
+            }), 201
+    
+    except Exception as e:
+        logger.error(f"YouTube processing error: {str(e)}", exc_info=True)
         return jsonify({'error': 'Internal server error'}), 500
 
 

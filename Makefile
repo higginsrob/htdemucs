@@ -97,7 +97,14 @@ clean-all: ## Remove everything (outputs, models, and docker image)
 .SILENT:
 server-build: build ## Build the production web server image
 	@echo "Building demucs web server image..."
-	@cd server && docker build -t demucs-server:latest .
+	@cd server && docker build -t demucs:latest .
+	@echo "Server image built successfully!"
+
+.PHONY:
+.SILENT:
+server-build-no-cache: build ## Build the production web server image
+	@echo "Building demucs web server image..."
+	@cd server && docker build --no-cache -t demucs:latest .
 	@echo "Server image built successfully!"
 
 .PHONY:
@@ -105,10 +112,10 @@ server-build: build ## Build the production web server image
 server-run: ## Run the production web server (port 8080)
 	@echo "Starting demucs web server on http://localhost:8080"
 	@docker run -d --rm \
-		--name=demucs-server \
+		--name=demucs \
 		-p 8080:8080 \
 		-v $(current-dir)demucs/models:/data/models \
-		demucs-server:latest
+		demucs:latest
 	@echo "Server started! View logs with: make server-logs"
 	@echo "Open in browser: http://localhost:8080"
 
@@ -117,27 +124,34 @@ server-run: ## Run the production web server (port 8080)
 server-run-gpu: ## Run the production web server with GPU support
 	@echo "Starting demucs web server with GPU on http://localhost:8080"
 	@docker run -d --rm \
-		--name=demucs-server \
+		--name=demucs \
 		--gpus all \
 		-p 8080:8080 \
 		-v $(current-dir)demucs/models:/data/models \
-		demucs-server:latest
+		demucs:latest
 	@echo "Server started! View logs with: make server-logs"
 	@echo "Open in browser: http://localhost:8080"
 
 .PHONY:
 .SILENT:
-server-dev: ## Run the server in development mode (with hot reload)
-	@echo "Starting demucs server in development mode..."
-	@cd server && python3 -m app.server
+dev: server-stop server-build ## Run the server in development mode (with hot reload)
+	@echo "Starting demucs web server on http://localhost:8080"
+	@docker run --rm \
+		--name=demucs \
+		-p 8080:8080 \
+		-v $(current-dir)demucs/models:/data/models \
+		-v $(current-dir)server/static:/app/static \
+		demucs:latest
+	@echo "Server started! View logs with: make server-logs"
+	@echo "Open in browser: http://localhost:8080"
 
 .PHONY:
 .SILENT:
 server-stop: ## Stop the running server container
-	@docker stop demucs-server 2>/dev/null || true
+	@docker stop demucs 2>/dev/null || true
 	@echo "Server stopped"
 
 .PHONY:
 .SILENT:
 server-logs: ## Show server logs
-	@docker logs -f demucs-server
+	@docker logs -f demucs

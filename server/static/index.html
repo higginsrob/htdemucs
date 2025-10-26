@@ -11,24 +11,74 @@
     <div class="container">
         <header>
             <h1>🎵 Demucs Audio Separator</h1>
-            <p class="subtitle">Separate your audio tracks into individual stems</p>
+            <p class="subtitle">Separate audio tracks into individual stems • Upload files or use YouTube URLs</p>
+            
+            <!-- View Switcher -->
+            <div class="view-switcher">
+                <button class="view-switch-btn active" id="add-view-btn" data-view="add">
+                    <span class="view-icon">➕</span>
+                    <span class="view-label">Add</span>
+                </button>
+                <button class="view-switch-btn" id="monitor-view-btn" data-view="monitor">
+                    <span class="view-icon">📊</span>
+                    <span class="view-label">Monitor</span>
+                    <span class="view-badge" id="active-jobs-badge" style="display: none;">0</span>
+                </button>
+            </div>
         </header>
 
         <main>
+            <!-- Add View Container -->
+            <div class="view-container active" id="add-view">
+            
             <!-- Upload Section -->
             <section class="upload-section" id="upload-section">
                 <div class="card">
-                    <h2>Upload Audio File</h2>
+                    <h2>Choose Input Source</h2>
                     
-                    <form id="upload-form">
+                    <!-- Source Type Selector -->
+                    <div class="source-selector">
+                        <button class="source-btn active" id="file-source-btn" data-source="file">
+                            <span>📁</span> Upload File
+                        </button>
+                        <button class="source-btn" id="youtube-source-btn" data-source="youtube">
+                            <span>▶️</span> YouTube URL
+                        </button>
+                    </div>
+
+                    <!-- File Upload Form -->
+                    <form id="upload-form" class="input-form active">
                         <div class="form-group">
                             <label for="audio-file" class="file-label">
                                 <span class="file-icon">📁</span>
                                 <span id="file-name">Choose an audio file...</span>
-                                <input type="file" id="audio-file" accept=".mp3,.wav,.flac,.m4a,.ogg,.opus" required>
+                                <input type="file" id="audio-file" accept=".mp3,.wav,.flac,.m4a,.ogg,.opus">
                             </label>
                         </div>
 
+                        <div class="file-info">
+                            <p><strong>Supported formats:</strong> MP3, WAV, FLAC, M4A, OGG, Opus</p>
+                            <p><strong>Max file size:</strong> 100MB</p>
+                        </div>
+                    </form>
+
+                    <!-- YouTube URL Form -->
+                    <form id="youtube-form" class="input-form">
+                        <div class="form-group">
+                            <label for="youtube-url">YouTube Video or Playlist URL</label>
+                            <input type="url" id="youtube-url" placeholder="https://www.youtube.com/watch?v=..." class="text-input">
+                        </div>
+
+                        <div class="file-info">
+                            <p><strong>Supports:</strong> Single videos and playlists</p>
+                            <p><strong>Note:</strong> Playlists will be added to a queue and processed one at a time</p>
+                        </div>
+                    </form>
+
+                    <!-- Common Options -->
+                    <div class="options-section">
+                        <h3>Processing Options</h3>
+                        
                         <div class="form-row">
                             <div class="form-group">
                                 <label for="model">Model Quality</label>
@@ -59,24 +109,25 @@
                                 <option value="other">Other Only</option>
                             </select>
                         </div>
-
-                        <button type="submit" class="btn btn-primary" id="submit-btn">
-                            <span>🎯 Separate Stems</span>
-                        </button>
-                    </form>
-
-                    <div class="file-info">
-                        <p><strong>Supported formats:</strong> MP3, WAV, FLAC, M4A, OGG, Opus</p>
-                        <p><strong>Max file size:</strong> 100MB</p>
                     </div>
+
+                    <button type="submit" class="btn btn-primary" id="submit-btn">
+                        <span>🎯 Separate Stems</span>
+                    </button>
                 </div>
             </section>
+            
+            </div>
+            <!-- End Add View Container -->
+
+            <!-- Monitor View Container -->
+            <div class="view-container" id="monitor-view">
 
             <!-- Progress Section -->
             <section class="progress-section" id="progress-section" style="display: none;">
                 <div class="card">
                     <h2>Processing Audio</h2>
-                    <p class="processing-file"></p>
+                    <p class="processing-file" id="processing-file"></p>
                     
                     <div class="progress-container">
                         <div class="progress-bar">
@@ -89,9 +140,33 @@
                         Initializing...
                     </div>
 
+                    <div class="queue-info" id="queue-info" style="display: none;">
+                        <p id="queue-message"></p>
+                    </div>
+
                     <div class="processing-info">
                         <p>⏱️ This may take a few minutes depending on file size and system resources.</p>
                         <p>💡 Progress updates are provided in real-time via WebSocket.</p>
+                        <p>📋 Processing one track at a time (FIFO queue)</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Playlist Queue Section -->
+            <section class="playlist-section" id="playlist-section" style="display: none;">
+                <div class="card">
+                    <h2>📋 Playlist Queued</h2>
+                    <p class="success-message" id="playlist-message"></p>
+                    
+                    <div class="playlist-jobs" id="playlist-jobs"></div>
+
+                    <div class="button-group">
+                        <button class="btn btn-secondary" id="view-queue-btn">
+                            <span>👁️ Monitor Queue</span>
+                        </button>
+                        <button class="btn btn-secondary" id="new-upload-from-playlist-btn">
+                            <span>🔄 Add More</span>
+                        </button>
                     </div>
                 </div>
             </section>
@@ -109,7 +184,7 @@
                             <span>⬇️ Download Stems (ZIP)</span>
                         </button>
                         <button class="btn btn-secondary" id="new-upload-btn">
-                            <span>🔄 Process Another File</span>
+                            <span>🔄 Process Another</span>
                         </button>
                     </div>
                 </div>
@@ -126,10 +201,62 @@
                     </button>
                 </div>
             </section>
+            
+            <!-- Queue Monitor Section -->
+            <section class="queue-section" id="queue-section">
+                <div class="card">
+                    <div class="queue-header">
+                        <h2>📋 Processing Queue</h2>
+                        <div class="queue-actions">
+                            <button class="btn btn-icon" id="download-all-btn" title="Download all completed" style="display: none;">
+                                <span>📦</span>
+                            </button>
+                            <button class="btn btn-icon" id="clear-history-btn" title="Clear completed jobs from view">
+                                <span>🗑️</span>
+                            </button>
+                            <button class="btn btn-icon" id="refresh-queue-btn" title="Refresh queue">
+                                <span>🔄</span>
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div class="queue-stats" id="queue-stats">
+                        <div class="stat">
+                            <span class="stat-label">Active</span>
+                            <span class="stat-value" id="stat-processing">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Queued</span>
+                            <span class="stat-value" id="stat-queued">0</span>
+                        </div>
+                        <div class="stat">
+                            <span class="stat-label">Completed</span>
+                            <span class="stat-value" id="stat-completed">0</span>
+                        </div>
+                    </div>
+
+                    <div class="queue-filter">
+                        <button class="filter-btn active" data-filter="all">All</button>
+                        <button class="filter-btn" data-filter="processing">Active</button>
+                        <button class="filter-btn" data-filter="queued">Queued</button>
+                        <button class="filter-btn" data-filter="completed">Completed</button>
+                    </div>
+
+                    <div class="queue-list" id="queue-list">
+                        <div class="empty-queue">
+                            <p>No jobs yet. Upload a file or submit a YouTube URL to get started!</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            
+            </div>
+            <!-- End Monitor View Container -->
         </main>
 
         <footer>
-            <p>Powered by <a href="https://github.com/adefossez/demucs" target="_blank">Demucs</a> | 
+            <p>Powered by <a href="https://github.com/adefossez/demucs" target="_blank">Demucs</a> • 
+               YouTube support via <a href="https://github.com/yt-dlp/yt-dlp" target="_blank">yt-dlp</a> • 
                Made with ❤️ for audio enthusiasts</p>
         </footer>
     </div>
@@ -137,4 +264,3 @@
     <script src="/js/app.js"></script>
 </body>
 </html>
-

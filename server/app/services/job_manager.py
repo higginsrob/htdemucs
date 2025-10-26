@@ -28,20 +28,32 @@ class Job:
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    # YouTube-specific fields
+    source_type: str = 'upload'  # 'upload' or 'youtube'
+    youtube_url: Optional[str] = None
+    youtube_metadata: Optional[dict] = None
+    playlist_id: Optional[str] = None  # If part of a playlist
+    playlist_position: Optional[int] = None  # Position in playlist
 
 
 class JobManager:
-    """Manages demucs processing jobs"""
+    """Manages demucs processing jobs with FIFO queue"""
     
     def __init__(self, job_dir: str = '/tmp/demucs-jobs'):
         self.job_dir = Path(job_dir)
         self.job_dir.mkdir(parents=True, exist_ok=True)
         self.jobs: Dict[str, Job] = {}
+        self.job_queue: List[str] = []  # FIFO queue of job IDs
         self.lock = threading.Lock()
+        self.processing_lock = threading.Lock()
+        self.currently_processing: Optional[str] = None
         logger.info(f"JobManager initialized with job_dir: {self.job_dir}")
     
-    def create_job(self, filename: str, model: str, output_format: str, stems: str) -> Job:
-        """Create a new job"""
+    def create_job(self, filename: str, model: str, output_format: str, stems: str,
+                   source_type: str = 'upload', youtube_url: str = None,
+                   youtube_metadata: dict = None, playlist_id: str = None,
+                   playlist_position: int = None) -> Job:
+        """Create a new job and add to queue"""
         job_id = str(uuid.uuid4())
         
         job = Job(
@@ -49,13 +61,19 @@ class JobManager:
             filename=filename,
             model=model,
             output_format=output_format,
-            stems=stems
+            stems=stems,
+            source_type=source_type,
+            youtube_url=youtube_url,
+            youtube_metadata=youtube_metadata,
+            playlist_id=playlist_id,
+            playlist_position=playlist_position
         )
         
         with self.lock:
             self.jobs[job_id] = job
+            self.job_queue.append(job_id)
         
-        logger.info(f"Created job {job_id}: {filename}")
+        logger.info(f"Created job {job_id}: {filename} (queue position: {len(self.job_queue)})")
         return job
     
     def get_job(self, job_id: str) -> Optional[Job]:
@@ -119,6 +137,52 @@ class JobManager:
         """Get count of queued jobs"""
         with self.lock:
             return sum(1 for job in self.jobs.values() if job.status == 'queued')
+    
+    def get_queue_position(self, job_id: str) -> Optional[int]:
+        """Get position of job in queue (1-indexed)"""
+        with self.lock:
+            try:
+                return self.job_queue.index(job_id) + 1
+            except ValueError:
+                return None
+    
+    def get_next_job(self) -> Optional[str]:
+        """Get next job from queue (FIFO)"""
+        with self.lock:
+            # Find first queued job in the queue
+            for job_id in self.job_queue:
+                job = self.jobs.get(job_id)
+                if job and job.status == 'queued':
+                    return job_id
+            return None
+    
+    def can_process_job(self) -> bool:
+        """Check if we can process a new job (no job currently processing)"""
+        with self.processing_lock:
+            return self.currently_processing is None
+    
+    def mark_processing_start(self, job_id: str) -> bool:
+        """Mark a job as currently processing"""
+        with self.processing_lock:
+            if self.currently_processing is None:
+                self.currently_processing = job_id
+                logger.info(f"Job {job_id} is now processing")
+                return True
+            else:
+                logger.warning(f"Cannot process {job_id}: {self.currently_processing} is already processing")
+                return False
+    
+    def mark_processing_end(self, job_id: str):
+        """Mark processing as complete, allow next job"""
+        with self.processing_lock:
+            if self.currently_processing == job_id:
+                self.currently_processing = None
+                logger.info(f"Job {job_id} processing ended")
+            
+        # Remove from queue
+        with self.lock:
+            if job_id in self.job_queue:
+                self.job_queue.remove(job_id)
     
     def cleanup_job(self, job_id: str):
         """Clean up job files and remove from memory"""

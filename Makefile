@@ -62,3 +62,33 @@ run-interactive: init build ## Run the docker container interactively to experim
 .SILENT:
 build: ## Build the docker image which supports running demucs with CPU only or with Nvidia CUDA on a supported GPU
 	@cd demucs && docker build -t xserrat/facebook-demucs:latest .
+
+.PHONY:
+.SILENT:
+check: ## Check system prerequisites for running demucs
+	@./scripts/check-prerequisites.sh
+
+.PHONY:
+.SILENT:
+validate: ## Validate the demucs setup by running a full test
+	@./scripts/validate.sh
+
+.PHONY:
+.SILENT:
+clean-outputs: ## Remove all output files
+	@./scripts/clean.sh --outputs
+
+.PHONY:
+.SILENT:
+clean-models: ## Remove downloaded models (will re-download on next run)
+	@./scripts/clean.sh --models
+
+.PHONY:
+.SILENT:
+clean-docker: ## Remove the docker image (will rebuild on next run)
+	@./scripts/clean.sh --docker
+
+.PHONY:
+.SILENT:
+clean-all: ## Remove everything (outputs, models, and docker image)
+	@./scripts/clean.sh --all

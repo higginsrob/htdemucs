@@ -59,5 +59,54 @@ The Docker image can be built locally via the `build` job:
 make build
 ```
 
+## Documentation
+
+This README provides basic usage instructions. For more detailed information:
+
+- **[QUICKREF.md](QUICKREF.md)** - Quick reference card for commands and options
+- **[DEVELOPMENT.md](DEVELOPMENT.md)** - Development guide for contributors
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** - Comprehensive problem-solving guide
+- **[DOCUMENTATION_INDEX.md](DOCUMENTATION_INDEX.md)** - Complete documentation index
+- **[scripts/README.md](scripts/README.md)** - Helper scripts documentation
+- **[server/README.md](server/README.md)** - Future web server design (not yet implemented)
+
+## Helper Scripts
+
+Development scripts are available in the `scripts/` directory:
+
+```bash
+# Check system prerequisites
+make check
+# or: ./scripts/check-prerequisites.sh
+
+# Validate complete workflow
+make validate
+# or: ./scripts/validate.sh
+
+# Clean up files
+make clean-outputs          # Remove output files
+make clean-models           # Remove models (will re-download)
+make clean-docker           # Remove Docker image
+make clean-all              # Remove everything
+# or: ./scripts/clean.sh --help
+```
+
+## Troubleshooting
+
+Having issues? Check these resources:
+
+1. **Quick diagnostics:** `make check`
+2. **Full guide:** [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+3. **Quick reference:** [QUICKREF.md](QUICKREF.md)
+4. **Report a bug:** Use [.github/ISSUE_TEMPLATE/bug_report.md](.github/ISSUE_TEMPLATE/bug_report.md)
+
+## Contributing
+
+Contributions are welcome! Please see:
+
+- [DEVELOPMENT.md](DEVELOPMENT.md) - Development setup and guidelines
+- [.github/PULL_REQUEST_TEMPLATE.md](.github/PULL_REQUEST_TEMPLATE.md) - PR checklist
+- [.github/ISSUE_TEMPLATE/feature_request.md](.github/ISSUE_TEMPLATE/feature_request.md) - Feature requests
+
 ## License
 This repository is released under the MIT license as found in the [LICENSE](LICENSE) file.

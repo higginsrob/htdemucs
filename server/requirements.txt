@@ -1,6 +1,6 @@
 # Web Framework
 flask==3.0.0
-flask-cors==4.0.0
+flask-cors==6.0.0
 
 # Real-time communication
 flask-socketio==5.3.5

@@ -4,7 +4,7 @@ flask-cors==4.0.0
 
 # Real-time communication
 flask-socketio==5.3.5
-python-socketio==5.10.0
+python-socketio==5.14.0
 python-engineio==4.8.0
 
 # WebSocket support

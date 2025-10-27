@@ -106,9 +106,13 @@ clean-all: ## Remove everything (outputs, models, and docker image)
 .PHONY:
 .SILENT:
 build: ## Build the docker image which supports running demucs with CPU only or with Nvidia CUDA on a supported GPU
-	@echo "Building demucs base image..."
+	@echo "Building custom ARM-native demucs base image..."
+	@cd server && docker build -f Dockerfile.base -t higginsrob/demucs-base:latest .
+	@echo "Building yt-dlp image..."
+	@cd server && docker build -f Dockerfile.ytdlp -t higginsrob/yt-dlp:latest .
+	@echo "Building demucs server image..."
 	@cd server && docker build -t higginsrob/htdemucs:local .
-	@echo "Server image built successfully!"
+	@echo "All images built successfully!"
 
 .PHONY:
 .SILENT:
@@ -122,13 +126,18 @@ build-no-cache: build ## Build the production web server image without cache
 run: stop build ## Run the production web server (port 8080)
 	@echo "Starting demucs web server on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
+	@echo "Job retention: 168 hours (7 days)"
 	@docker run -d --rm \
 		--name=demucs \
+		--privileged \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		-p 8080:8080 \
 		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-e OUTPUT_DIR=/app/output \
-		higginsrob/htdemucs:latest
+		-e HOST_OUTPUT_DIR=$(current-dir)demucs/output \
+		-e JOB_RETENTION_HOURS=168 \
+		higginsrob/htdemucs:local
 	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
 
@@ -137,6 +146,7 @@ run: stop build ## Run the production web server (port 8080)
 run-gpu: ## Run the production web server with GPU support
 	@echo "Starting demucs web server with GPU on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
+	@echo "Job retention: 168 hours (7 days)"
 	@docker run -d --rm \
 		--name=demucs \
 		--gpus all \
@@ -144,6 +154,7 @@ run-gpu: ## Run the production web server with GPU support
 		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-e OUTPUT_DIR=/app/output \
+		-e JOB_RETENTION_HOURS=168 \
 		higginsrob/htdemucs:latest
 	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
@@ -153,13 +164,18 @@ run-gpu: ## Run the production web server with GPU support
 dev: stop build ## Run the server in development mode (with hot reload)
 	@echo "Starting demucs web server on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
+	@echo "Job retention: 168 hours (7 days)"
 	@docker run --rm \
 		--name=demucs \
+		--privileged \
+		-v /var/run/docker.sock:/var/run/docker.sock \
 		-p 8080:8080 \
 		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-v $(current-dir)server/static:/app/static \
 		-e OUTPUT_DIR=/app/output \
+		-e HOST_OUTPUT_DIR=$(current-dir)demucs/output \
+		-e JOB_RETENTION_HOURS=168 \
 		higginsrob/htdemucs:local
 	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
@@ -180,6 +196,8 @@ logs: ## Show server logs
 push: build ## Push the production web server image to Docker Hub
 	@echo "Pushing demucs web server image to Docker Hub..."
 	@docker push higginsrob/htdemucs:local higginsrob/htdemucs:latest
+	@docker push higginsrob/htdemucs:local higginsrob/demucs-base:latest
+	@docker push higginsrob/htdemucs:local higginsrob/yt-dlp:latest
 	@echo "Server image pushed successfully!"
 
 .PHONY:
@@ -187,4 +205,6 @@ push: build ## Push the production web server image to Docker Hub
 pull: ## Pull the production web server image from Docker Hub
 	@echo "Pulling demucs web server image from Docker Hub..."
 	@docker pull higginsrob/htdemucs:latest
+	@docker pull higginsrob/demucs-base:latest
+	@docker pull higginsrob/yt-dlp:latest
 	@echo "Server image pulled successfully!"

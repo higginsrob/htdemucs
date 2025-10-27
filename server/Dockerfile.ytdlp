@@ -1,0 +1,22 @@
+# yt-dlp Dockerfile - Separate container for yt-dlp with Python 3.10+
+FROM python:3.10-slim
+
+USER root
+
+# Install system dependencies for yt-dlp
+RUN apt update && apt install -y --no-install-recommends \
+    ffmpeg \
+    wget \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install yt-dlp==2025.10.22
+RUN python3 -m pip install --upgrade pip && \
+    python3 -m pip install yt-dlp==2025.10.22 --no-cache-dir
+
+# Set working directory
+WORKDIR /data
+
+# Default entrypoint - can be overridden
+ENTRYPOINT ["yt-dlp"]
+

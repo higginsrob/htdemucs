@@ -331,6 +331,11 @@ class JobManager:
                 return
             
             loaded_count = 0
+            skipped_count = 0
+            error_count = 0
+            
+            logger.info(f"Scanning output directory for existing jobs: {self.output_dir}")
+            
             for job_dir in self.output_dir.iterdir():
                 if job_dir.is_dir() and not job_dir.name.startswith('.'):
                     metadata_file = job_dir / 'metadata.json'
@@ -344,18 +349,53 @@ class JobManager:
                                 required_fields = {'filename', 'model', 'output_format', 'stems'}
                                 if not required_fields.issubset(data.keys()):
                                     # This is a reference file, not a full job
+                                    skipped_count += 1
                                     continue
                                 
                                 job = Job.from_dict(data)
                                 
+                                # Check if this is an orphaned job (has output files but wrong status)
+                                if job.status not in ['completed', 'failed']:
+                                    # Try to recover: check if output files exist
+                                    if self._verify_model_output_files(job.job_id, job.model, job.output_format):
+                                        logger.info(f"Recovering orphaned job {job.job_id} (status was '{job.status}' but output files exist)")
+                                        # Fix the status and timestamps
+                                        job.status = 'completed'
+                                        job.progress = 100
+                                        if not job.completed_at:
+                                            # Use directory modification time as best guess
+                                            model_dir = self.output_dir / job.job_id / job.model
+                                            if model_dir.exists():
+                                                import os
+                                                mtime = os.path.getmtime(model_dir)
+                                                job.completed_at = datetime.fromtimestamp(mtime)
+                                        # Save the corrected metadata
+                                        with open(metadata_file, 'w') as f:
+                                            json.dump(job.to_dict(), f, indent=2)
+                                        # Now load it into memory
+                                        with self.lock:
+                                            self.jobs[job.job_id] = job
+                                        loaded_count += 1
+                                        logger.info(f"Successfully recovered and loaded job {job.job_id}")
+                                        continue
+                                    else:
+                                        # No output files, truly incomplete
+                                        logger.debug(f"Skipping incomplete job {job.job_id} (status: {job.status}, no output files)")
+                                        skipped_count += 1
+                                        continue
+                                
                                 # Only load completed/failed jobs (not queued/processing)
-                                # Queued/processing jobs are lost on restart
                                 if job.status in ['completed', 'failed']:
                                     with self.lock:
                                         self.jobs[job.job_id] = job
                                     loaded_count += 1
+                                else:
+                                    skipped_count += 1
                         except Exception as e:
                             logger.error(f"Error loading job from {metadata_file}: {str(e)}")
+                            error_count += 1
+            
+            logger.info(f"Job loading complete: {loaded_count} jobs loaded, {skipped_count} skipped, {error_count} errors")
         
         except Exception as e:
             logger.error(f"Error loading jobs from disk: {str(e)}", exc_info=True)

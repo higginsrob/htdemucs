@@ -32,6 +32,13 @@ let trackConfigs = {
 let masterGain = null;
 let audioSocket = null; // Separate socket for audio streaming
 
+// Spectrum analyzer state
+let spectrumCanvas = null;
+let spectrumCtx = null;
+let spectrumAnalyzer = null;
+let spectrumAnimationFrame = null;
+let spectrumDebugCounter = 0;
+
 // ============================================================================
 // Toast Notification Functions
 // ============================================================================
@@ -169,6 +176,7 @@ const restartBtn = document.getElementById('restart-btn');
 const prevTrackBtn = document.getElementById('prev-track-btn');
 const nextTrackBtn = document.getElementById('next-track-btn');
 const toggleMixerBtn = document.getElementById('toggle-mixer-btn');
+const autoplayCheckbox = document.getElementById('autoplay-checkbox');
 const currentTimeDisplay = document.getElementById('current-time');
 const totalTimeDisplay = document.getElementById('total-time');
 const timelineTrack = document.getElementById('timeline-track');
@@ -178,14 +186,18 @@ const playerMixer = document.getElementById('player-mixer');
 const mixerChannels = document.getElementById('mixer-channels');
 const masterVolumeKnob = document.getElementById('master-volume-knob');
 const masterVolumeValue = document.getElementById('master-volume-value');
+const masterClearButtons = document.getElementById('master-clear-buttons');
+const clearMuteBtn = document.getElementById('clear-mute-btn');
+const clearSoloBtn = document.getElementById('clear-solo-btn');
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
-    restoreUIState(); // Restore saved UI state first
     setupEventListeners();
     connectSocket();
     initQueue();
     initPlayer();
+    restoreUIState(); // Restore saved UI state after player is initialized
+    fetchLibrary(1); // Pre-load library on page load so it's cached
 });
 
 // ============================================================================
@@ -210,6 +222,24 @@ function restoreViewState() {
         console.warn('Failed to restore view state from localStorage:', error);
     }
     return 'add'; // Default to 'add' view
+}
+
+function savePlayerState(jobId) {
+    try {
+        localStorage.setItem('demucs_current_player_job', jobId);
+    } catch (error) {
+        console.warn('Failed to save player state to localStorage:', error);
+    }
+}
+
+function restorePlayerState() {
+    try {
+        const savedJobId = localStorage.getItem('demucs_current_player_job');
+        return savedJobId;
+    } catch (error) {
+        console.warn('Failed to restore player state from localStorage:', error);
+    }
+    return null;
 }
 
 function saveStatsState(statsId, isVisible) {
@@ -246,6 +276,24 @@ function restoreUIState() {
         libraryStats.style.display = libraryStatsVisible ? 'grid' : 'none';
     }
     
+    // If the saved view is 'player', restore the last played song
+    if (savedView === 'player') {
+        const savedJobId = restorePlayerState();
+        if (savedJobId) {
+            console.log('Restoring player state with job:', savedJobId);
+            // Load the track immediately (don't use setTimeout to avoid delays)
+            // The loadTrackIntoPlayer function will switch to player view when ready
+            loadTrackIntoPlayer(savedJobId).then(() => {
+                console.log('Player state restored successfully');
+            }).catch(error => {
+                console.error('Failed to restore player state:', error);
+                // Fall back to default view if restoration fails
+                switchView('add', false);
+            });
+            return; // loadTrackIntoPlayer will handle view switching
+        }
+    }
+    
     // Switch to saved view (this will also activate the button)
     if (savedView && savedView !== 'add') {
         switchView(savedView, false); // Don't save again
@@ -256,11 +304,11 @@ function restoreUIState() {
 // Mixer State Persistence (localStorage)
 // ============================================================================
 
-function saveMixerState(jobId) {
+function saveMixerState() {
     try {
         const mixerState = {
             master: {
-                volume: masterGain ? masterGain.gain.value : 0.8
+                volume: masterGain ? masterGain.gain.value : 1 
             },
             tracks: {}
         };
@@ -274,15 +322,15 @@ function saveMixerState(jobId) {
             };
         });
         
-        localStorage.setItem(`demucs_mixer_${jobId}`, JSON.stringify(mixerState));
+        localStorage.setItem('demucs_mixer_settings', JSON.stringify(mixerState));
     } catch (error) {
         console.warn('Failed to save mixer state:', error);
     }
 }
 
-function restoreMixerState(jobId) {
+function restoreMixerState() {
     try {
-        const saved = localStorage.getItem(`demucs_mixer_${jobId}`);
+        const saved = localStorage.getItem('demucs_mixer_settings');
         if (saved) {
             return JSON.parse(saved);
         }
@@ -334,6 +382,33 @@ function applyMixerState(mixerState) {
         // Apply gain values considering mute/solo state
         updateAllTrackGains();
     }
+    
+    // Update visibility of clear buttons
+    updateClearButtonsVisibility();
+}
+
+// ============================================================================
+// Autoplay Preference Persistence (localStorage)
+// ============================================================================
+
+function saveAutoplayPreference(enabled) {
+    try {
+        localStorage.setItem('demucs_autoplay', JSON.stringify(enabled));
+    } catch (error) {
+        console.warn('Failed to save autoplay preference:', error);
+    }
+}
+
+function loadAutoplayPreference() {
+    try {
+        const saved = localStorage.getItem('demucs_autoplay');
+        if (saved !== null) {
+            return JSON.parse(saved);
+        }
+    } catch (error) {
+        console.warn('Failed to load autoplay preference:', error);
+    }
+    return false; // Default to false
 }
 
 function updateTrackKnobVisuals(trackName, settings) {
@@ -452,6 +527,18 @@ function setupEventListeners() {
     nextTrackBtn.addEventListener('click', playNextTrack);
     toggleMixerBtn.addEventListener('click', toggleMixer);
     
+    // Autoplay checkbox
+    if (autoplayCheckbox) {
+        // Load saved autoplay preference
+        const autoplayEnabled = loadAutoplayPreference();
+        autoplayCheckbox.checked = autoplayEnabled;
+        
+        // Listen for changes and save preference
+        autoplayCheckbox.addEventListener('change', () => {
+            saveAutoplayPreference(autoplayCheckbox.checked);
+        });
+    }
+    
     // Timeline scrubbing
     timelineTrack.addEventListener('mousedown', startTimelineScrub);
     timelineTrack.addEventListener('touchstart', startTimelineScrub);
@@ -459,6 +546,11 @@ function setupEventListeners() {
     // Master volume knob
     masterVolumeKnob.addEventListener('mousedown', (e) => startKnobDrag(e, 'master', 'volume'));
     masterVolumeKnob.addEventListener('touchstart', (e) => startKnobDrag(e, 'master', 'volume'));
+    masterVolumeKnob.addEventListener('dblclick', (e) => startKnobDrag(e, 'master', 'volume'));
+    
+    // Master clear buttons
+    clearMuteBtn.addEventListener('click', clearAllMutes);
+    clearSoloBtn.addEventListener('click', clearAllSolos);
     
     // Library controls
     refreshLibraryBtn.addEventListener('click', () => {
@@ -1265,6 +1357,11 @@ function switchView(view, saveState = true) {
     } else if (view === 'player') {
         playerViewBtn.classList.add('active');
         playerView.classList.add('active');
+        
+        // Initialize and start spectrum analyzer when player view is shown
+        setTimeout(() => {
+            startSpectrumAnalyzer();
+        }, 100);
     }
     
     // Scroll to top smoothly
@@ -1585,10 +1682,14 @@ function initPlayer() {
 
 async function loadTrackIntoPlayer(jobId) {
     try {
-        // Resume AudioContext on user interaction (required by browsers)
+        // Try to resume AudioContext if possible (browsers require user gesture for autoplay)
+        // Don't block loading - AudioContext will resume when user clicks play button
         if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
-            await Tone.context.resume();
-            console.log('AudioContext resumed');
+            // Don't await - just attempt resume and continue regardless
+            // This prevents hanging on page load when user gesture is required
+            Tone.context.resume().catch(error => {
+                console.log('AudioContext resume deferred (will resume on play button click)');
+            });
         }
         
         // Fetch job details
@@ -1621,7 +1722,15 @@ async function loadTrackIntoPlayer(jobId) {
         });
         playerTracks = {};
         
+        // Reset player state for new track
+        playerDuration = 0;
+        playerCurrentTime = 0;
+        playbackStartTime = 0;
+        
         currentPlayerJob = job;
+        
+        // Save the current player job ID to localStorage
+        savePlayerState(jobId);
         
         // Determine track configuration (4 or 6 tracks)
         const is6Stem = job.model && job.model.includes('6s');
@@ -1653,7 +1762,7 @@ async function loadTrackIntoPlayer(jobId) {
         buildMixerUI(tracks);
         
         // Restore saved mixer state from localStorage
-        const savedMixerState = restoreMixerState(jobId);
+        const savedMixerState = restoreMixerState();
         if (savedMixerState) {
             // Small delay to ensure mixer UI is fully rendered
             setTimeout(() => {
@@ -1664,6 +1773,14 @@ async function loadTrackIntoPlayer(jobId) {
         // Switch to player view
         switchView('player');
         
+        // Check if autoplay is enabled and start playback if so
+        if (autoplayCheckbox && autoplayCheckbox.checked) {
+            // Small delay to ensure everything is set up before starting playback
+            setTimeout(() => {
+                startPlayback();
+            }, 300);
+        }
+        
     } catch (error) {
         console.error('Error loading track:', error);
         showToast('error', 'Load Failed', 'Failed to load track into player');
@@ -1673,8 +1790,21 @@ async function loadTrackIntoPlayer(jobId) {
 async function initializeTracks(jobId, trackNames) {
     // Initialize master gain if not already initialized
     if (!masterGain) {
-        masterGain = new Tone.Gain(0.8).toDestination();
+        masterGain = new Tone.Gain(1).toDestination();
+        
+        // Initialize spectrum analyzer connected to master gain
+        if (!spectrumAnalyzer) {
+            spectrumAnalyzer = new Tone.Analyser('fft', 512);
+            masterGain.connect(spectrumAnalyzer);
+            console.log('Spectrum analyzer created and connected to master gain');
+        }
     }
+    
+    console.log('Initializing tracks with master gain:', {
+        hasMasterGain: !!masterGain,
+        hasAnalyzer: !!spectrumAnalyzer,
+        toneContextState: Tone.context.state
+    });
     
     // Load audio streams from server via HTTP (simpler and more reliable than socket.io)
     const loadPromises = trackNames.map(async (trackName) => {
@@ -1684,10 +1814,22 @@ async function initializeTracks(jobId, trackNames) {
             const panNode = new Tone.Panner(0).connect(gainNode);
             const player = new Tone.Player().connect(panNode);
             
+            // Create stereo waveform analyzer for VU meters (after panning for accurate L/R display)
+            const meterLeft = new Tone.Meter();
+            const meterRight = new Tone.Meter();
+            
+            // Split stereo signal to measure left and right channels independently
+            const splitter = new Tone.Split();
+            panNode.connect(splitter);
+            splitter.connect(meterLeft, 0);  // Left channel
+            splitter.connect(meterRight, 1); // Right channel
+            
             playerTracks[trackName] = {
                 player: player,
                 gain: gainNode,
                 pan: panNode,
+                meterLeft: meterLeft,
+                meterRight: meterRight,
                 muted: false,
                 solo: false,
                 volume: 1.0,
@@ -1778,7 +1920,7 @@ function buildMixerUI(trackNames) {
                 </div>
                 <div class="knob-container">
                     <label>Volume</label>
-                    <div class="knob" id="${trackName}-volume-knob" data-track="${trackName}" data-param="volume" data-value="1.0">
+                    <div class="knob" id="${trackName}-volume-knob" data-track="${trackName}" data-param="volume" data-value="1">
                         <div class="knob-indicator"></div>
                     </div>
                     <span class="knob-value" id="${trackName}-volume-value">100%</span>
@@ -1789,6 +1931,28 @@ function buildMixerUI(trackNames) {
                         <div class="knob-indicator"></div>
                     </div>
                     <span class="knob-value" id="${trackName}-pan-value">C</span>
+                </div>
+                <div class="vu-meters">
+                    <div class="vu-meter" id="${trackName}-vu-left">
+                        <div class="vu-led red"></div>
+                        <div class="vu-led yellow"></div>
+                        <div class="vu-led yellow"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                    </div>
+                    <div class="vu-meter" id="${trackName}-vu-right">
+                        <div class="vu-led red"></div>
+                        <div class="vu-led yellow"></div>
+                        <div class="vu-led yellow"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                        <div class="vu-led green"></div>
+                    </div>
                 </div>
             </div>
         `;
@@ -1805,8 +1969,10 @@ function buildMixerUI(trackNames) {
         soloBtn.addEventListener('click', () => toggleSolo(trackName));
         volumeKnob.addEventListener('mousedown', (e) => startKnobDrag(e, trackName, 'volume'));
         volumeKnob.addEventListener('touchstart', (e) => startKnobDrag(e, trackName, 'volume'));
+        volumeKnob.addEventListener('dblclick', (e) => startKnobDrag(e, trackName, 'volume'));
         panKnob.addEventListener('mousedown', (e) => startKnobDrag(e, trackName, 'pan'));
         panKnob.addEventListener('touchstart', (e) => startKnobDrag(e, trackName, 'pan'));
+        panKnob.addEventListener('dblclick', (e) => startKnobDrag(e, trackName, 'pan'));
     });
 }
 
@@ -1869,6 +2035,9 @@ function pausePlayback() {
     Object.values(playerTracks).forEach(track => {
         track.player.stop();
     });
+    
+    // Clear VU meters
+    clearVUMeters();
     
     playerIsPlaying = false;
     playPauseIcon.textContent = '▶️';
@@ -1957,8 +2126,11 @@ function toggleMute(trackName) {
     
     // Save mixer state to localStorage
     if (currentPlayerJob) {
-        saveMixerState(currentPlayerJob.job_id);
+        saveMixerState();
     }
+    
+    // Update visibility of clear buttons
+    updateClearButtonsVisibility();
 }
 
 function toggleSolo(trackName) {
@@ -1983,7 +2155,78 @@ function toggleSolo(trackName) {
     
     // Save mixer state to localStorage
     if (currentPlayerJob) {
-        saveMixerState(currentPlayerJob.job_id);
+        saveMixerState();
+    }
+    
+    // Update visibility of clear buttons
+    updateClearButtonsVisibility();
+}
+
+function clearAllMutes() {
+    Object.entries(playerTracks).forEach(([trackName, track]) => {
+        if (track.muted) {
+            track.muted = false;
+            track.gain.gain.value = track.volume;
+            
+            const muteBtn = document.getElementById(`${trackName}-mute`);
+            if (muteBtn) {
+                muteBtn.classList.remove('active');
+            }
+        }
+    });
+    
+    // Save mixer state to localStorage
+    if (currentPlayerJob) {
+        saveMixerState();
+    }
+    
+    // Update visibility of clear buttons
+    updateClearButtonsVisibility();
+}
+
+function clearAllSolos() {
+    const wasSoloed = Object.values(playerTracks).some(t => t.solo);
+    
+    Object.entries(playerTracks).forEach(([trackName, track]) => {
+        if (track.solo) {
+            track.solo = false;
+            
+            const soloBtn = document.getElementById(`${trackName}-solo`);
+            if (soloBtn) {
+                soloBtn.classList.remove('active');
+            }
+        }
+    });
+    
+    // If solos were active, restore normal mute state
+    if (wasSoloed) {
+        Object.entries(playerTracks).forEach(([name, track]) => {
+            track.gain.gain.value = track.muted ? 0 : track.volume;
+        });
+    }
+    
+    // Save mixer state to localStorage
+    if (currentPlayerJob) {
+        saveMixerState();
+    }
+    
+    // Update visibility of clear buttons
+    updateClearButtonsVisibility();
+}
+
+function updateClearButtonsVisibility() {
+    if (!masterClearButtons) return;
+    
+    const anyMuted = Object.values(playerTracks).some(t => t.muted);
+    const anySoloed = Object.values(playerTracks).some(t => t.solo);
+    
+    // Show the container if any track is muted or soloed
+    if (anyMuted || anySoloed) {
+        masterClearButtons.style.display = 'flex';
+        clearMuteBtn.style.display = anyMuted ? 'block' : 'none';
+        clearSoloBtn.style.display = anySoloed ? 'block' : 'none';
+    } else {
+        masterClearButtons.style.display = 'none';
     }
 }
 
@@ -2003,10 +2246,79 @@ function updateTimeline() {
     timelineProgress.style.width = `${progress}%`;
     timelineHandle.style.left = `${progress}%`;
     
+    // Update VU meters
+    updateVUMeters();
+    
     // Auto-stop at end
     if (playerIsPlaying && currentTime >= playerDuration) {
         stopPlayback();
     }
+}
+
+function updateVUMeters() {
+    // Update VU meters for each track
+    Object.entries(playerTracks).forEach(([trackName, track]) => {
+        if (!track.meterLeft || !track.meterRight) return;
+        
+        // Get current level in decibels for left and right channels
+        // Tone.Meter returns -Infinity to 0
+        const levelLeft = track.meterLeft.getValue();
+        const levelRight = track.meterRight.getValue();
+        
+        // Convert dB to 0-8 range for LED display
+        // -48dB or lower = 0 LEDs, 0dB = 8 LEDs
+        const minDb = -48;
+        const maxDb = 0;
+        
+        const normalizedLevelLeft = Math.max(0, Math.min(1, (levelLeft - minDb) / (maxDb - minDb)));
+        const normalizedLevelRight = Math.max(0, Math.min(1, (levelRight - minDb) / (maxDb - minDb)));
+        
+        const ledCountLeft = Math.round(normalizedLevelLeft * 8);
+        const ledCountRight = Math.round(normalizedLevelRight * 8);
+        
+        // Update left channel
+        const leftMeter = document.getElementById(`${trackName}-vu-left`);
+        if (leftMeter) {
+            const leds = leftMeter.querySelectorAll('.vu-led');
+            leds.forEach((led, index) => {
+                if (index < ledCountLeft) {
+                    led.classList.add('active');
+                } else {
+                    led.classList.remove('active');
+                }
+            });
+        }
+        
+        // Update right channel
+        const rightMeter = document.getElementById(`${trackName}-vu-right`);
+        if (rightMeter) {
+            const leds = rightMeter.querySelectorAll('.vu-led');
+            leds.forEach((led, index) => {
+                if (index < ledCountRight) {
+                    led.classList.add('active');
+                } else {
+                    led.classList.remove('active');
+                }
+            });
+        }
+    });
+}
+
+function clearVUMeters() {
+    // Clear all VU meters by removing active class from all LEDs
+    Object.keys(playerTracks).forEach(trackName => {
+        const leftMeter = document.getElementById(`${trackName}-vu-left`);
+        if (leftMeter) {
+            const leds = leftMeter.querySelectorAll('.vu-led');
+            leds.forEach(led => led.classList.remove('active'));
+        }
+        
+        const rightMeter = document.getElementById(`${trackName}-vu-right`);
+        if (rightMeter) {
+            const leds = rightMeter.querySelectorAll('.vu-led');
+            leds.forEach(led => led.classList.remove('active'));
+        }
+    });
 }
 
 function startTimelineScrub(e) {
@@ -2068,7 +2380,36 @@ function startTimelineScrub(e) {
 
 let currentKnobDrag = null;
 
+function resetKnobToDefault(trackName, paramType) {
+    // Determine default value based on parameter type
+    let defaultValue;
+    
+    if (paramType === 'volume') {
+        // All volumes default to 1.0 (100%)
+        defaultValue = 1.0;
+    } else if (paramType === 'pan') {
+        // Pan defaults to center (0)
+        defaultValue = 0;
+    }
+    
+    // Set the value using the existing update function
+    updateKnobParameterByDelta(trackName, paramType, defaultValue, 0);
+    
+    // Save mixer state to localStorage
+    if (currentPlayerJob) {
+        saveMixerState();
+    }
+}
+
 function startKnobDrag(e, trackName, paramType) {
+    // Check for double-click or modifier+click (Shift, Control, Option/Alt, or Command) to reset to default
+    const hasModifier = e.shiftKey || e.ctrlKey || e.altKey || e.metaKey;
+    if (e.type === 'dblclick' || (e.type === 'mousedown' && hasModifier)) {
+        e.preventDefault();
+        resetKnobToDefault(trackName, paramType);
+        return;
+    }
+    
     e.preventDefault();
     
     const knob = e.currentTarget;
@@ -2078,7 +2419,7 @@ function startKnobDrag(e, trackName, paramType) {
     // Get current value
     let currentValue;
     if (trackName === 'master' && paramType === 'volume') {
-        currentValue = masterGain ? masterGain.gain.value : 0.8;
+        currentValue = masterGain ? masterGain.gain.value : 1.0;
     } else if (playerTracks[trackName]) {
         currentValue = paramType === 'volume' ? playerTracks[trackName].volume : playerTracks[trackName].panValue;
     } else {
@@ -2154,7 +2495,7 @@ function updateKnobParameterByDelta(trackName, paramType, startValue, delta) {
     if (trackName === 'master' && paramType === 'volume') {
         // Initialize master gain if needed
         if (!masterGain) {
-            masterGain = new Tone.Gain(0.8).toDestination();
+            masterGain = new Tone.Gain(1).toDestination();
         }
         
         // Master volume
@@ -2201,7 +2542,7 @@ function updateKnobParameterByDelta(trackName, paramType, startValue, delta) {
     
     // Save mixer state to localStorage
     if (currentPlayerJob) {
-        saveMixerState(currentPlayerJob.job_id);
+        saveMixerState();
     }
 }
 
@@ -2383,6 +2724,278 @@ function updateSuggestions() {
     });
 }
 
+// ============================================================================
+// Spectrum Analyzer Functions
+// ============================================================================
+
+function initSpectrumAnalyzer() {
+    spectrumCanvas = document.getElementById('spectrum-canvas');
+    if (!spectrumCanvas) {
+        console.warn('Spectrum canvas not found');
+        return;
+    }
+    
+    spectrumCtx = spectrumCanvas.getContext('2d');
+    
+    // Set canvas size to match container
+    const container = spectrumCanvas.parentElement;
+    if (container) {
+        spectrumCanvas.width = container.clientWidth - 16; // Account for padding
+        spectrumCanvas.height = container.clientHeight - 16;
+    }
+    
+    console.log('Spectrum analyzer initialized', { 
+        canvas: !!spectrumCanvas, 
+        ctx: !!spectrumCtx, 
+        analyzer: !!spectrumAnalyzer 
+    });
+}
+
+function drawSpectrum() {
+    if (!spectrumCanvas || !spectrumCtx || !spectrumAnalyzer) {
+        spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        return;
+    }
+    
+    const width = spectrumCanvas.parentNode.clientWidth;
+    const height = spectrumCanvas.parentNode.clientHeight;
+
+    // Get frequency data (Tone.js FFT returns decibel values, typically -100 to 0)
+    const data = spectrumAnalyzer.getValue();
+    
+    if (!data || data.length === 0) {
+        spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        return;
+    }
+    
+    // Debug: Log FFT data occasionally (every ~120 frames, ~2 seconds at 60fps)
+    spectrumDebugCounter++;
+    
+    // Clear canvas
+    spectrumCtx.fillStyle = '#0a0a0a';
+    spectrumCtx.fillRect(0, 0, width, height);
+    
+    // Draw spectrum bars with interlacing
+    const interlaceStep = 2; // Draw every Nth bar (2 = skip every other bar)
+    const barGap = 2; // Black gap between bars in pixels
+    const barWidth = (width / data.length) * interlaceStep;
+    const actualBarWidth = barWidth - barGap;
+    const minDecibels = -90; // Minimum decibel value to consider
+    const maxDecibels = -10; // Maximum decibel value (loud sounds)
+    
+    // Draw spectrum bars
+    for (let i = 0; i < data.length; i += interlaceStep) {
+        const decibels = data[i];
+        
+        // Convert decibels to 0-1 range
+        // Tone.js FFT returns values typically from -100 to 0 dB
+        const normalizedMagnitude = Math.max(0, Math.min(1, (decibels - minDecibels) / (maxDecibels - minDecibels)));
+        const barHeight = normalizedMagnitude * height;
+        
+        if (barHeight > 1) { // Only draw if bar is visible
+            // Color gradient from low to high frequencies (blue to red via green)
+            const hue = 240 - (i / data.length) * 240; // 240 (blue) to 0 (red)
+            const saturation = 80 + (normalizedMagnitude * 20); // More saturated at higher values
+            const lightness = 40 + (normalizedMagnitude * 30); // Brighter at higher values
+            spectrumCtx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
+            
+            spectrumCtx.fillRect(
+                (i / interlaceStep) * barWidth,
+                height - barHeight,
+                actualBarWidth,
+                barHeight
+            );
+        }
+    }
+    
+    // Draw horizontal grid lines for LED effect
+    spectrumCtx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
+    spectrumCtx.lineWidth = 1;
+    const gridLineSpacing = 8; // Space between horizontal lines in pixels
+    
+    for (let y = 0; y < height; y += gridLineSpacing) {
+        spectrumCtx.beginPath();
+        spectrumCtx.moveTo(0, y);
+        spectrumCtx.lineTo(width, y);
+        spectrumCtx.stroke();
+    }
+    
+    spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+}
+
+function startSpectrumAnalyzer() {
+    if (spectrumAnimationFrame) {
+        cancelAnimationFrame(spectrumAnimationFrame);
+    }
+    initSpectrumAnalyzer();
+    
+    // Log analyzer state for debugging
+    if (spectrumAnalyzer) {
+        console.log('Starting spectrum analyzer', {
+            hasAnalyzer: !!spectrumAnalyzer,
+            hasCanvas: !!spectrumCanvas,
+            canvasSize: spectrumCanvas ? `${spectrumCanvas.width}x${spectrumCanvas.height}` : 'N/A',
+            toneContextState: typeof Tone !== 'undefined' ? Tone.context.state : 'N/A'
+        });
+    }
+    
+    drawSpectrum();
+}
+
+function stopSpectrumAnalyzer() {
+    if (spectrumAnimationFrame) {
+        cancelAnimationFrame(spectrumAnimationFrame);
+        spectrumAnimationFrame = null;
+    }
+    
+    // Clear canvas
+    if (spectrumCanvas && spectrumCtx) {
+        spectrumCtx.fillStyle = '#0a0a0a';
+        spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
+    }
+}
+
+// ============================================================================
+// Keyboard Controls
+// ============================================================================
+
+function adjustMasterVolume(delta) {
+    if (!masterGain) {
+        masterGain = new Tone.Gain(1).toDestination();
+    }
+    
+    const currentValue = masterGain.gain.value;
+    const newValue = Math.max(0, Math.min(1, currentValue + delta));
+    
+    masterGain.gain.value = newValue;
+    
+    // Update UI
+    const rotation = (newValue - 0.5) * 270;
+    masterVolumeKnob.querySelector('.knob-indicator').style.transform = `rotate(${rotation}deg)`;
+    masterVolumeValue.textContent = `${Math.round(newValue * 100)}%`;
+    
+    // Save mixer state
+    if (currentPlayerJob) {
+        saveMixerState();
+    }
+}
+
+function hasAnyMuted() {
+    return Object.values(playerTracks).some(t => t.muted);
+}
+
+function hasAnySolos() {
+    return Object.values(playerTracks).some(t => t.solo);
+}
+
+function handleKeyboardShortcuts(e) {
+    // Don't handle shortcuts if user is typing in an input field or textarea
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') {
+        return;
+    }
+    
+    // Handle Escape key to close chatbot
+    if (e.key === 'Escape') {
+        if (chatbotOpen) {
+            chatbotOpen = false;
+            chatbotContainer.classList.remove('open');
+            chatbotToggle.classList.remove('open');
+            return;
+        }
+        
+        // Escape from add, monitor, or player view goes to library view
+        if (currentView === 'add' || currentView === 'monitor' || currentView === 'player') {
+            switchView('library');
+            return;
+        }
+    }
+    
+    // Player view keyboard shortcuts
+    if (currentView === 'player') {
+        if (e.key === ' ') {
+            e.preventDefault();
+            togglePlayPause();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            playNextTrack();
+        } else if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            playPreviousTrack();
+        } else if (e.key === 'r' || e.key === 'R') {
+            e.preventDefault();
+            restartPlayback();
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            adjustMasterVolume(0.05); // Increase by 5%
+        } else if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            adjustMasterVolume(-0.05); // Decrease by 5%
+        } else if (e.key === 'v' || e.key === 'V') {
+            e.preventDefault();
+            if (playerTracks['vocals']) {
+                toggleMute('vocals');
+            }
+        } else if (e.key === 'b' || e.key === 'B') {
+            e.preventDefault();
+            if (playerTracks['bass']) {
+                toggleMute('bass');
+            }
+        } else if (e.key === 'd' || e.key === 'D') {
+            e.preventDefault();
+            if (playerTracks['drums']) {
+                toggleMute('drums');
+            }
+        } else if (e.key === 'o' || e.key === 'O') {
+            e.preventDefault();
+            if (playerTracks['other']) {
+                toggleMute('other');
+            }
+        } else if (e.key === 'g' || e.key === 'G') {
+            e.preventDefault();
+            if (playerTracks['guitar']) {
+                toggleMute('guitar');
+            }
+        } else if (e.key === 'p' || e.key === 'P') {
+            // Only handle piano mute in player view
+            if (currentView === 'player') {
+                e.preventDefault();
+                if (playerTracks['piano']) {
+                    toggleMute('piano');
+                }
+            }
+            // For view navigation, handled below in the global shortcuts section
+        } else if (e.key === 'm' || e.key === 'M') {
+            e.preventDefault();
+            if (hasAnyMuted()) {
+                clearAllMutes();
+            }
+        } else if (e.key === 's' || e.key === 'S') {
+            e.preventDefault();
+            if (hasAnySolos()) {
+                clearAllSolos();
+            }
+        } else if (e.key === 'c' || e.key === 'C') {
+            e.preventDefault();
+            toggleMixer();
+        }
+    }
+    
+    // View navigation shortcuts (work from any view, except where handled above)
+    if (e.key === 'l' || e.key === 'L') {
+        e.preventDefault();
+        switchView('library');
+    } else if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault();
+        switchView('add');
+    } else if ((e.key === 'p' || e.key === 'P') && currentView !== 'player') {
+        e.preventDefault();
+        // Switch to player view if a song is selected (only from non-player views)
+        if (currentPlayerJob) {
+            switchView('player');
+        }
+    }
+}
+
 // Initialize chatbot when DOM is ready
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initChatbot);
@@ -2390,3 +3003,6 @@ if (document.readyState === 'loading') {
     // DOM already loaded
     initChatbot();
 }
+
+// Initialize keyboard shortcuts
+document.addEventListener('keydown', handleKeyboardShortcuts);

@@ -13,6 +13,9 @@ from dataclasses import dataclass, asdict
 
 logger = logging.getLogger(__name__)
 
+# Maximum duration in seconds (10 minutes)
+MAX_DURATION_SECONDS = 600
+
 
 @dataclass
 class YouTubeMetadata:
@@ -216,6 +219,9 @@ class YouTubeService:
         
         Returns:
             (Path to downloaded file, YouTubeMetadata) or (None, None) if failed
+        
+        Raises:
+            Exception: If video duration exceeds maximum allowed duration
         """
         try:
             # First get metadata
@@ -223,6 +229,12 @@ class YouTubeService:
             if not metadata:
                 logger.error("Failed to get metadata, cannot download")
                 return None, None
+            
+            # Check duration before downloading
+            if metadata.duration > MAX_DURATION_SECONDS:
+                duration_minutes = metadata.duration // 60
+                duration_seconds = metadata.duration % 60
+                raise Exception(f"Sorry, songs are limited to 10 minutes. This video is {duration_minutes} minutes {duration_seconds} seconds.")
             
             # Create safe filename
             safe_title = "".join(c for c in metadata.title if c.isalnum() or c in (' ', '-', '_')).strip()

@@ -40,12 +40,12 @@ socketio = SocketIO(
     app,
     cors_allowed_origins="*",
     async_mode='gevent',
-    logger=True,
+    logger=False,
     engineio_logger=False
 )
 
 # Initialize services
-job_manager = JobManager()
+job_manager = JobManager(output_dir=os.getenv('OUTPUT_DIR', '/app/output'))
 demucs_processor = DemucsProcessor(socketio, job_manager)
 youtube_service = YouTubeService()
 
@@ -170,28 +170,69 @@ def upload_audio():
         except ValidationError as e:
             return jsonify({'error': str(e)}), 400
         
-        # Create job and save file
+        # Save file temporarily to compute hash
         filename = secure_filename(file.filename)
-        job = job_manager.create_job(filename, model, output_format, stems)
+        temp_dir = Path('/tmp/demucs-uploads')
+        temp_dir.mkdir(parents=True, exist_ok=True)
+        temp_file_path = temp_dir / filename
+        file.save(str(temp_file_path))
         
-        # Save uploaded file
-        job_input_dir = job_manager.get_job_input_dir(job.job_id)
-        job_input_dir.mkdir(parents=True, exist_ok=True)
-        input_file_path = job_input_dir / filename
-        file.save(str(input_file_path))
+        try:
+            # Compute file hash
+            file_hash = job_manager.compute_file_hash(temp_file_path)
+            
+            # Check if this file has been processed before with the SAME model and output format
+            existing_job = job_manager.find_job_by_file_hash(file_hash, model=model, output_format=output_format)
+            if existing_job:
+                logger.info(f"File already exists (hash: {file_hash[:8]}...) with model {model}, returning cached job {existing_job.job_id}")
+                # Clean up temp file
+                temp_file_path.unlink()
+                
+                return jsonify({
+                    'job_id': existing_job.job_id,
+                    'status': existing_job.status,
+                    'created_at': existing_job.created_at.isoformat(),
+                    'filename': existing_job.filename,
+                    'model': existing_job.model,
+                    'cached': True,
+                    'message': f'This file was already processed with {model}. Using cached result.'
+                }), 200
+            
+            # Create job with hash as ID
+            job = job_manager.create_job(
+                filename=filename,
+                model=model,
+                output_format=output_format,
+                stems=stems,
+                file_hash=file_hash,
+                use_hash_as_id=True
+            )
+            
+            # Move file to job input directory
+            job_input_dir = job_manager.get_job_input_dir(job.job_id)
+            job_input_dir.mkdir(parents=True, exist_ok=True)
+            input_file_path = job_input_dir / filename
+            temp_file_path.rename(input_file_path)
+            
+            logger.info(f"Job {job.job_id} created: {filename} (model={model}, format={output_format}, stems={stems})")
+            
+            # Start processing in background
+            demucs_processor.process_job(job.job_id)
+            
+            return jsonify({
+                'job_id': job.job_id,
+                'status': job.status,
+                'created_at': job.created_at.isoformat(),
+                'filename': filename,
+                'model': model,
+                'cached': False
+            }), 201
         
-        logger.info(f"Job {job.job_id} created: {filename} (model={model}, format={output_format}, stems={stems})")
-        
-        # Start processing in background
-        demucs_processor.process_job(job.job_id)
-        
-        return jsonify({
-            'job_id': job.job_id,
-            'status': job.status,
-            'created_at': job.created_at.isoformat(),
-            'filename': filename,
-            'model': model
-        }), 201
+        except Exception as e:
+            # Clean up temp file on error
+            if temp_file_path.exists():
+                temp_file_path.unlink()
+            raise
         
     except Exception as e:
         logger.error(f"Upload error: {str(e)}", exc_info=True)
@@ -259,39 +300,74 @@ def process_youtube():
                 return jsonify({'error': 'Could not extract videos from playlist'}), 400
             
             jobs = []
+            cached = 0
+            
             for idx, video in enumerate(videos, 1):
-                # Create job for each video
-                filename = f"{video['title']}.mp3"  # Will be updated when downloaded
-                job = job_manager.create_job(
-                    filename=filename,
-                    model=model,
-                    output_format=output_format,
-                    stems=stems,
-                    source_type='youtube',
-                    youtube_url=video['url'],
-                    playlist_id=playlist_id,
-                    playlist_position=idx
-                )
+                try:
+                    # Use video ID from playlist data (already available, no need to fetch metadata yet)
+                    video_id = video['id']
+                    
+                    # Check if this YouTube video has been processed before with the SAME model and output format
+                    existing_job = job_manager.find_job_by_youtube_id(video_id, model=model, output_format=output_format)
+                    if existing_job:
+                        logger.info(f"Video already exists with model {model}: {video['title']} (job_id: {existing_job.job_id})")
+                        jobs.append({
+                            'job_id': existing_job.job_id,
+                            'title': video['title'],
+                            'position': idx,
+                            'status': existing_job.status,
+                            'cached': True
+                        })
+                        cached += 1
+                        continue
+                    
+                    # Create job for each video with basic info
+                    # Full metadata will be fetched when job is actually processed
+                    filename = f"{video['title']}.mp3"
+                    job = job_manager.create_job(
+                        filename=filename,
+                        model=model,
+                        output_format=output_format,
+                        stems=stems,
+                        source_type='youtube',
+                        youtube_url=video['url'],
+                        youtube_metadata=None,  # Will be fetched during processing
+                        playlist_id=playlist_id,
+                        playlist_position=idx,
+                        youtube_id=video_id,
+                        duration=None,  # Will be fetched during processing
+                        use_hash_as_id=True
+                    )
+                    
+                    # Start processing (will be queued)
+                    demucs_processor.process_job(job.job_id)
+                    
+                    jobs.append({
+                        'job_id': job.job_id,
+                        'title': video['title'],
+                        'position': idx,
+                        'status': job.status,
+                        'cached': False
+                    })
                 
-                # Start processing (will be queued)
-                demucs_processor.process_job(job.job_id)
-                
-                jobs.append({
-                    'job_id': job.job_id,
-                    'title': video['title'],
-                    'position': idx,
-                    'status': job.status
-                })
+                except Exception as e:
+                    logger.error(f"Error creating job for playlist video {video['title']}: {str(e)}")
+                    # Continue with other videos even if one fails
             
-            logger.info(f"Created {len(jobs)} jobs for playlist {playlist_id}")
+            new_jobs = len(jobs) - cached
+            logger.info(f"Playlist {playlist_id}: {new_jobs} new jobs created, {cached} cached")
             
-            return jsonify({
+            response = {
                 'type': 'playlist',
                 'playlist_id': playlist_id,
-                'total_videos': len(jobs),
+                'total_videos': len(videos),
+                'jobs_created': new_jobs,
+                'jobs_cached': cached,
                 'jobs': jobs,
-                'message': f'Added {len(jobs)} videos to processing queue'
-            }), 201
+                'message': f'Added {len(jobs)} videos ({new_jobs} new, {cached} cached)'
+            }
+            
+            return jsonify(response), 201
         
         else:
             # Single video
@@ -302,7 +378,30 @@ def process_youtube():
             if not metadata:
                 return jsonify({'error': 'Could not extract video information'}), 400
             
-            # Create job
+            # Check duration before processing
+            if metadata.duration > 600:  # 10 minutes
+                return jsonify({
+                    'error': f'Sorry, songs are limited to 10 minutes. This video is {metadata.duration // 60} minutes {metadata.duration % 60} seconds.'
+                }), 400
+            
+            # Check if this YouTube video has been processed before with the SAME model and output format
+            existing_job = job_manager.find_job_by_youtube_id(metadata.id, model=model, output_format=output_format)
+            if existing_job:
+                logger.info(f"YouTube video {metadata.id} already exists with model {model}, returning cached job {existing_job.job_id}")
+                
+                return jsonify({
+                    'type': 'video',
+                    'job_id': existing_job.job_id,
+                    'status': existing_job.status,
+                    'created_at': existing_job.created_at.isoformat(),
+                    'title': metadata.title,
+                    'duration': metadata.duration,
+                    'model': existing_job.model,
+                    'cached': True,
+                    'message': 'Video already exists, skipping processing'
+                }), 200
+            
+            # Create job with YouTube ID
             filename = f"{metadata.title}.mp3"  # Will be updated when downloaded
             job = job_manager.create_job(
                 filename=filename,
@@ -311,7 +410,10 @@ def process_youtube():
                 stems=stems,
                 source_type='youtube',
                 youtube_url=url,
-                youtube_metadata=metadata.__dict__
+                youtube_metadata=metadata.__dict__,
+                youtube_id=metadata.id,
+                duration=metadata.duration,
+                use_hash_as_id=True
             )
             
             # Start processing (will be queued)
@@ -326,7 +428,8 @@ def process_youtube():
                 'created_at': job.created_at.isoformat(),
                 'title': metadata.title,
                 'duration': metadata.duration,
-                'model': model
+                'model': model,
+                'cached': False
             }), 201
     
     except Exception as e:
@@ -355,6 +458,10 @@ def get_job_status(job_id):
             'filename': job.filename,
             'model': job.model,
             'created_at': job.created_at.isoformat(),
+            'output_format': job.output_format,
+            'stems': job.stems,
+            'duration': job.duration,
+            'source_type': job.source_type
         }
         
         if job.started_at:
@@ -366,6 +473,12 @@ def get_job_status(job_id):
         
         if job.error_message:
             response['error_message'] = job.error_message
+        
+        # Add YouTube-specific fields
+        if job.youtube_metadata:
+            response['youtube_metadata'] = job.youtube_metadata
+        if job.youtube_id:
+            response['youtube_id'] = job.youtube_id
         
         return jsonify(response), 200
         
@@ -419,6 +532,70 @@ def download_results(job_id):
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@app.route('/api/stream/<job_id>/<track_name>', methods=['GET'])
+def stream_track_http(job_id, track_name):
+    """
+    HTTP endpoint for streaming individual track (alternative to socket.io)
+    
+    Returns:
+        Audio file for the requested track
+    """
+    try:
+        job = job_manager.get_job(job_id)
+        
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        if job.status != 'completed':
+            return jsonify({'error': 'Job not completed yet'}), 400
+        
+        # Get output directory
+        output_dir = job_manager.get_output_dir_for_job(job_id)
+        
+        # Determine the correct model output directory
+        model_dir = output_dir / job.model
+        if not model_dir.exists():
+            # Try alternative model directory names
+            for possible_dir in output_dir.iterdir():
+                if possible_dir.is_dir():
+                    model_dir = possible_dir
+                    break
+        
+        # Find the track file
+        track_file = None
+        output_format = job.output_format or 'mp3'
+        
+        # Try exact match first
+        possible_file = model_dir / f'{track_name}.{output_format}'
+        if possible_file.exists():
+            track_file = possible_file
+        else:
+            # Search for the file
+            for file in model_dir.iterdir():
+                if file.stem == track_name and file.suffix[1:] == output_format:
+                    track_file = file
+                    break
+        
+        if not track_file or not track_file.exists():
+            return jsonify({'error': f'Track file not found: {track_name}'}), 404
+        
+        # Determine MIME type
+        mime_type = 'audio/mpeg' if output_format == 'mp3' else 'audio/wav'
+        
+        logger.info(f"Streaming track {track_name} for job {job_id}")
+        
+        return send_file(
+            str(track_file),
+            mimetype=mime_type,
+            as_attachment=False,
+            download_name=f'{track_name}.{output_format}'
+        )
+        
+    except Exception as e:
+        logger.error(f"Stream error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
     """
@@ -442,7 +619,9 @@ def list_jobs():
                     'filename': job.filename,
                     'model': job.model,
                     'progress': job.progress,
-                    'created_at': job.created_at.isoformat()
+                    'created_at': job.created_at.isoformat(),
+                    'duration': job.duration,
+                    'youtube_metadata': job.youtube_metadata
                 }
                 for job in jobs
             ]
@@ -453,6 +632,222 @@ def list_jobs():
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@app.route('/api/library', methods=['GET'])
+def get_library():
+    """
+    Get paginated library of all jobs
+    
+    Query params:
+        page: Page number (default: 1)
+        page_size: Jobs per page (default: 50, max: 300)
+    
+    Returns:
+        JSON with paginated jobs and metadata
+    """
+    try:
+        page = int(request.args.get('page', 1))
+        page_size = min(int(request.args.get('page_size', 50)), 300)
+        
+        result = job_manager.get_all_jobs_paginated(page, page_size)
+        
+        # Convert jobs to dict format
+        jobs_data = []
+        for job in result['jobs']:
+            job_data = {
+                'job_id': job.job_id,
+                'status': job.status,
+                'filename': job.filename,
+                'model': job.model,
+                'output_format': job.output_format,
+                'stems': job.stems,
+                'progress': job.progress,
+                'created_at': job.created_at.isoformat(),
+                'duration': job.duration,
+                'source_type': job.source_type
+            }
+            
+            # Add YouTube-specific fields
+            if job.youtube_metadata:
+                job_data['thumbnail'] = job.youtube_metadata.get('thumbnail')
+                job_data['uploader'] = job.youtube_metadata.get('uploader')
+                job_data['description'] = job.youtube_metadata.get('description', '')[:200]  # Truncate
+                job_data['channel'] = job.youtube_metadata.get('channel')
+            
+            if job.error_message:
+                job_data['error_message'] = job.error_message
+            
+            jobs_data.append(job_data)
+        
+        return jsonify({
+            'jobs': jobs_data,
+            'page': result['page'],
+            'page_size': result['page_size'],
+            'total_jobs': result['total_jobs'],
+            'total_pages': result['total_pages']
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Library error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/jobs/<job_id>', methods=['DELETE'])
+def delete_job(job_id):
+    """
+    Delete a job and all its files
+    
+    Returns:
+        JSON with success message
+    """
+    try:
+        success = job_manager.delete_job(job_id)
+        
+        if success:
+            logger.info(f"Job {job_id} deleted via API")
+            return jsonify({'message': 'Job deleted successfully'}), 200
+        else:
+            return jsonify({'error': 'Job not found or could not be deleted'}), 404
+        
+    except Exception as e:
+        logger.error(f"Delete job error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/cancel/<job_id>', methods=['POST'])
+def cancel_job(job_id):
+    """
+    Cancel a queued or processing job
+    
+    Returns:
+        JSON with success message
+    """
+    try:
+        job = job_manager.get_job(job_id)
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        if job.status in ['completed', 'failed', 'cancelled']:
+            return jsonify({'error': f'Cannot cancel job with status: {job.status}'}), 400
+        
+        # Cancel the job
+        success = job_manager.cancel_job(job_id)
+        
+        # If job is currently processing, kill the subprocess
+        if job.status == 'processing':
+            demucs_processor.cancel_current_job()
+        
+        if success:
+            # Emit cancelled status
+            socketio.emit(
+                'progress',
+                {
+                    'job_id': job_id,
+                    'status': 'cancelled',
+                    'progress': 0,
+                    'message': 'Job cancelled'
+                },
+                room=job_id,
+                namespace='/progress'
+            )
+            return jsonify({'message': 'Job cancelled successfully'}), 200
+        else:
+            return jsonify({'error': 'Could not cancel job'}), 400
+        
+    except Exception as e:
+        logger.error(f"Cancel job error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
+@app.route('/api/refresh/<job_id>', methods=['POST'])
+def refresh_job(job_id):
+    """
+    Refresh a job by deleting its output and re-adding to queue
+    
+    JSON body (optional):
+        model: New model to use (default: keep existing)
+        output_format: New output format (default: keep existing)
+        stems: New stems option (default: keep existing)
+    
+    Returns:
+        JSON with new job information
+    """
+    try:
+        # Get existing job
+        old_job = job_manager.get_job(job_id)
+        if not old_job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        # Get new parameters (or use existing)
+        data = request.get_json() or {}
+        model = data.get('model', old_job.model)
+        output_format = data.get('output_format', old_job.output_format)
+        stems = data.get('stems', old_job.stems)
+        
+        # Delete the old job output
+        output_dir = job_manager.get_output_dir_for_job(job_id)
+        if output_dir.exists():
+            import shutil
+            shutil.rmtree(output_dir)
+            logger.info(f"Deleted output for job {job_id} for refresh")
+        
+        # Create new job with same source
+        if old_job.source_type == 'youtube':
+            # Re-create YouTube job
+            new_job = job_manager.create_job(
+                filename=old_job.filename,
+                model=model,
+                output_format=output_format,
+                stems=stems,
+                source_type='youtube',
+                youtube_url=old_job.youtube_url,
+                youtube_metadata=old_job.youtube_metadata,
+                youtube_id=old_job.youtube_id,
+                duration=old_job.duration,
+                use_hash_as_id=True
+            )
+        else:
+            # Re-create upload job
+            new_job = job_manager.create_job(
+                filename=old_job.filename,
+                model=model,
+                output_format=output_format,
+                stems=stems,
+                source_type='upload',
+                file_hash=old_job.file_hash,
+                duration=old_job.duration,
+                use_hash_as_id=True
+            )
+            
+            # Copy input file back if it still exists
+            old_input_dir = job_manager.get_job_input_dir(job_id)
+            if old_input_dir.exists():
+                new_input_dir = job_manager.get_job_input_dir(new_job.job_id)
+                new_input_dir.mkdir(parents=True, exist_ok=True)
+                
+                import shutil
+                for file in old_input_dir.iterdir():
+                    if file.is_file():
+                        shutil.copy2(file, new_input_dir / file.name)
+        
+        # Start processing
+        demucs_processor.process_job(new_job.job_id)
+        
+        logger.info(f"Job {job_id} refreshed as {new_job.job_id}")
+        
+        return jsonify({
+            'job_id': new_job.job_id,
+            'status': new_job.status,
+            'created_at': new_job.created_at.isoformat(),
+            'filename': new_job.filename,
+            'model': model,
+            'message': 'Job refreshed and added to queue'
+        }), 201
+        
+    except Exception as e:
+        logger.error(f"Refresh job error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 # ============================================================================
 # Socket.IO Events
 # ============================================================================
@@ -460,14 +855,13 @@ def list_jobs():
 @socketio.on('connect', namespace='/progress')
 def handle_connect():
     """Client connected to progress namespace"""
-    logger.info(f"Client connected: {request.sid}")
     emit('connected', {'message': 'Connected to progress updates'})
 
 
 @socketio.on('disconnect', namespace='/progress')
 def handle_disconnect():
     """Client disconnected from progress namespace"""
-    logger.info(f"Client disconnected: {request.sid}")
+    pass
 
 
 @socketio.on('subscribe', namespace='/progress')
@@ -476,7 +870,6 @@ def handle_subscribe(data):
     job_id = data.get('job_id')
     if job_id:
         join_room(job_id, namespace='/progress')
-        logger.info(f"Client {request.sid} subscribed to job {job_id}")
         
         # Send current job status
         job = job_manager.get_job(job_id)
@@ -487,6 +880,140 @@ def handle_subscribe(data):
                 'progress': job.progress,
                 'message': f'Current status: {job.status}'
             }, room=request.sid)
+
+
+# ============================================================================
+# Audio Streaming Socket.IO Events
+# ============================================================================
+
+@socketio.on('connect', namespace='/audio')
+def handle_audio_connect():
+    """Client connected to audio streaming namespace"""
+    logger.info('Audio streaming client connected')
+    emit('connected', {'message': 'Connected to audio streaming'})
+
+
+@socketio.on('disconnect', namespace='/audio')
+def handle_audio_disconnect():
+    """Client disconnected from audio streaming namespace"""
+    logger.info('Audio streaming client disconnected')
+
+
+@socketio.on('stream_track', namespace='/audio')
+def handle_stream_track(data):
+    """Stream audio track to client"""
+    job_id = data.get('job_id')
+    track_name = data.get('track_name')
+    
+    if not job_id or not track_name:
+        emit('error', {'message': 'Missing job_id or track_name'})
+        return
+    
+    logger.info(f'Streaming request for job {job_id}, track: {track_name}')
+    
+    # Get job details
+    job = job_manager.get_job(job_id)
+    if not job:
+        emit('error', {'message': 'Job not found'})
+        return
+    
+    if job.status != 'completed':
+        emit('error', {'message': 'Job not completed yet'})
+        return
+    
+    # Get output directory
+    output_dir = job_manager.get_output_dir_for_job(job_id)
+    
+    # Determine the correct model output directory
+    model_dir = output_dir / job.model
+    if not model_dir.exists():
+        # Try alternative model directory names
+        for possible_dir in output_dir.iterdir():
+            if possible_dir.is_dir():
+                model_dir = possible_dir
+                break
+    
+    # Find the track file
+    track_file = None
+    output_format = job.output_format or 'mp3'
+    
+    # Try exact match first
+    possible_file = model_dir / f'{track_name}.{output_format}'
+    if possible_file.exists():
+        track_file = possible_file
+    else:
+        # Search for the file
+        for file in model_dir.iterdir():
+            if file.stem == track_name and file.suffix[1:] == output_format:
+                track_file = file
+                break
+    
+    if not track_file or not track_file.exists():
+        logger.error(f'Track file not found: {track_name}.{output_format} in {model_dir}')
+        emit('error', {'message': f'Track file not found: {track_name}'})
+        return
+    
+    logger.info(f'Found track file: {track_file}')
+    
+    # Get audio duration using mutagen or similar
+    import subprocess
+    try:
+        # Use ffprobe to get duration
+        result = subprocess.run(
+            ['ffprobe', '-v', 'error', '-show_entries', 'format=duration', 
+             '-of', 'default=noprint_wrappers=1:nokey=1', str(track_file)],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        duration = float(result.stdout.strip())
+    except Exception as e:
+        logger.warning(f'Could not get audio duration: {e}')
+        duration = job.duration or 0
+    
+    # Stream file in chunks
+    chunk_size = 64 * 1024  # 64KB chunks
+    
+    try:
+        with open(track_file, 'rb') as f:
+            chunk_num = 0
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
+                
+                # Convert to base64 for transmission
+                import base64
+                chunk_b64 = base64.b64encode(chunk).decode('utf-8')
+                
+                # Send chunk
+                emit('audio_chunk', {
+                    'track_name': track_name,
+                    'chunk': chunk_b64,
+                    'chunk_num': chunk_num,
+                    'is_complete': False,
+                    'duration': duration
+                })
+                
+                chunk_num += 1
+                
+                # Small delay to prevent overwhelming the client
+                socketio.sleep(0.01)
+            
+            # Send completion message
+            emit('audio_chunk', {
+                'track_name': track_name,
+                'chunk': '',
+                'chunk_num': chunk_num,
+                'is_complete': True,
+                'duration': duration
+            })
+            
+            logger.info(f'Completed streaming {track_name} ({chunk_num} chunks)')
+            
+    except Exception as e:
+        logger.error(f'Error streaming track {track_name}: {str(e)}', exc_info=True)
+        emit('error', {'message': f'Error streaming track: {str(e)}'})
 
 
 # ============================================================================

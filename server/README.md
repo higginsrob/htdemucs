@@ -315,8 +315,8 @@ Simple single-page application:
   <form id="upload-form">
     <input type="file" id="audio-file" accept=".mp3,.wav,.flac" required>
     <select id="model">
-      <option value="htdemucs_ft">High Quality (htdemucs_ft)</option>
       <option value="htdemucs">Standard (htdemucs)</option>
+      <option value="htdemucs_ft">High Quality (htdemucs_ft)</option>
       <option value="htdemucs_6s">6 Stems</option>
     </select>
     <button type="submit">Separate Stems</button>

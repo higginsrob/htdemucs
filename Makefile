@@ -109,12 +109,15 @@ server-build-no-cache: build ## Build the production web server image
 
 .PHONY:
 .SILENT:
-server-run: ## Run the production web server (port 8080)
+server-run: server-stop server-build ## Run the production web server (port 8080)
 	@echo "Starting demucs web server on http://localhost:8080"
+	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run -d --rm \
 		--name=demucs \
 		-p 8080:8080 \
+		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
+		-e OUTPUT_DIR=/app/output \
 		demucs:latest
 	@echo "Server started! View logs with: make server-logs"
 	@echo "Open in browser: http://localhost:8080"
@@ -123,11 +126,14 @@ server-run: ## Run the production web server (port 8080)
 .SILENT:
 server-run-gpu: ## Run the production web server with GPU support
 	@echo "Starting demucs web server with GPU on http://localhost:8080"
+	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run -d --rm \
 		--name=demucs \
 		--gpus all \
 		-p 8080:8080 \
+		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
+		-e OUTPUT_DIR=/app/output \
 		demucs:latest
 	@echo "Server started! View logs with: make server-logs"
 	@echo "Open in browser: http://localhost:8080"
@@ -136,11 +142,14 @@ server-run-gpu: ## Run the production web server with GPU support
 .SILENT:
 dev: server-stop server-build ## Run the server in development mode (with hot reload)
 	@echo "Starting demucs web server on http://localhost:8080"
+	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run --rm \
 		--name=demucs \
 		-p 8080:8080 \
+		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-v $(current-dir)server/static:/app/static \
+		-e OUTPUT_DIR=/app/output \
 		demucs:latest
 	@echo "Server started! View logs with: make server-logs"
 	@echo "Open in browser: http://localhost:8080"

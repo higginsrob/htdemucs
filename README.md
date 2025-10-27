@@ -1,5 +1,9 @@
 # Demucs Web Application
 
+[![Build and Push Docker Images](https://github.com/higginsrob/demucs/actions/workflows/docker-build.yml/badge.svg)](https://github.com/higginsrob/demucs/actions/workflows/docker-build.yml)
+[![Docker Hub](https://img.shields.io/docker/v/higginsrob/htdemucs?label=docker%20hub&logo=docker)](https://hub.docker.com/r/higginsrob/htdemucs)
+[![Docker Pulls](https://img.shields.io/docker/pulls/higginsrob/htdemucs?logo=docker)](https://hub.docker.com/r/higginsrob/htdemucs)
+
 A modern web application for audio source separation using [Demucs](https://github.com/adefossez/demucs). Split music tracks into separate stems (bass, drums, vocals, and other instruments) through an intuitive web interface with real-time progress tracking.
 
 ## Based On
@@ -32,7 +36,34 @@ Check your system:
 make check
 ```
 
-### Running the Development Server
+### Option 1: Using Pre-Built Images from Docker Hub
+
+The fastest way to get started is using our pre-built images from Docker Hub:
+
+```bash
+# Run the server (it will automatically pull the image)
+docker run -d --rm \
+  --name htdemucs \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest
+```
+
+With GPU support:
+```bash
+docker run -d --rm \
+  --name htdemucs \
+  --gpus all \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest
+```
+
+Then open http://localhost:8080 in your browser!
+
+### Option 2: Running the Development Server
 
 1. **Clone this repository**
    ```bash
@@ -239,12 +270,29 @@ See **[server/CHATBOT_GUIDE.md](server/CHATBOT_GUIDE.md)** for complete document
 3. Processing begins immediately
 4. Metadata (title, artist) extracted and saved
 
+## Docker Hub Images
+
+Pre-built Docker images are automatically built and published to Docker Hub via GitHub Actions:
+
+- **[higginsrob/htdemucs:latest](https://hub.docker.com/r/higginsrob/htdemucs)** - Latest server with web interface
+- **[higginsrob/htdemucs:server](https://hub.docker.com/r/higginsrob/htdemucs)** - Server image alias
+- **[higginsrob/htdemucs:demucs](https://hub.docker.com/r/higginsrob/htdemucs)** - Base Demucs CLI image
+- **[higginsrob/htdemucs:v*](https://hub.docker.com/r/higginsrob/htdemucs)** - Versioned releases
+
+Images are automatically built on:
+- Every push to the `main` branch
+- Git tags (for versioned releases)
+- Manual workflow triggers
+
+See **[.github/workflows/README.md](.github/workflows/README.md)** for complete CI/CD documentation.
+
 ## Documentation
 
 - **[instructions/DEVELOPMENT.md](instructions/DEVELOPMENT.md)** - Development guide
 - **[server/CHATBOT_GUIDE.md](server/CHATBOT_GUIDE.md)** - Chatbot documentation
 - **[server/TESTING.md](server/TESTING.md)** - Testing guide
 - **[instructions/TROUBLESHOOTING.md](instructions/TROUBLESHOOTING.md)** - Troubleshooting
+- **[.github/workflows/README.md](.github/workflows/README.md)** - GitHub Actions CI/CD
 
 ## Troubleshooting
 

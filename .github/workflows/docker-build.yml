@@ -1,0 +1,100 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  DOCKERHUB_REPO: higginsrob/htdemucs
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata for demucs base image
+        id: meta-demucs
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO }}
+          tags: |
+            type=ref,event=branch,suffix=-demucs
+            type=ref,event=pr,suffix=-demucs
+            type=semver,pattern={{version}},suffix=-demucs
+            type=semver,pattern={{major}}.{{minor}},suffix=-demucs
+            type=semver,pattern={{major}},suffix=-demucs
+            type=raw,value=demucs
+            type=raw,value=demucs-latest
+
+      - name: Build and push demucs base image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./demucs
+          file: ./demucs/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta-demucs.outputs.tags }}
+          labels: ${{ steps.meta-demucs.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.DOCKERHUB_REPO }}:demucs-buildcache
+          cache-to: type=registry,ref=${{ env.DOCKERHUB_REPO }}:demucs-buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Extract metadata for server image
+        id: meta-server
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKERHUB_REPO }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=server
+            type=sha
+
+      - name: Build and push server image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./server
+          file: ./server/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta-server.outputs.tags }}
+          labels: ${{ steps.meta-server.outputs.labels }}
+          build-args: |
+            BASE_IMAGE=${{ env.DOCKERHUB_REPO }}:demucs
+          cache-from: type=registry,ref=${{ env.DOCKERHUB_REPO }}:server-buildcache
+          cache-to: type=registry,ref=${{ env.DOCKERHUB_REPO }}:server-buildcache,mode=max
+          platforms: linux/amd64
+
+      - name: Update Docker Hub description
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.DOCKERHUB_REPO }}
+          short-description: "HT-Demucs: AI-powered music source separation with web interface"
+          readme-filepath: ./README.md
+

@@ -2,7 +2,8 @@
 # Based on the demucs CLI Docker image but adds a web interface
 
 # Start from the demucs base image
-FROM xserrat/facebook-demucs:latest
+ARG BASE_IMAGE=higginsrob/htdemucs:demucs
+FROM ${BASE_IMAGE}
 
 USER root
 

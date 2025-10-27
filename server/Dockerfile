@@ -1,8 +1,8 @@
 # Server Dockerfile - Production-ready Demucs Web Server
-# Based on the demucs CLI Docker image but adds a web interface
+# Based on our custom ARM-native demucs base image
 
-# Start from the demucs base image
-ARG BASE_IMAGE=xserrat/facebook-demucs:latest
+# Start from our custom demucs base image (ARM64 native)
+ARG BASE_IMAGE=higginsrob/demucs-base:latest
 FROM ${BASE_IMAGE}
 
 USER root
@@ -10,16 +10,23 @@ USER root
 # Set working directory for the server
 WORKDIR /app
 
-# Install system dependencies for python-magic
+# Install system dependencies including Docker CLI
 RUN apt update && apt install -y --no-install-recommends \
     libmagic1 \
+    wget \
+    curl \
+    ca-certificates \
+    gnupg \
+    lsb-release \
+    && mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian bullseye stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null \
+    && apt update && apt install -y --no-install-recommends \
+    docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first for better layer caching
 COPY requirements.txt /app/requirements.txt
-
-# Upgrade pip first to ensure compatibility with latest packages
-RUN python3 -m pip install --upgrade pip
 
 # Install server dependencies
 RUN python3 -m pip install -r /app/requirements.txt --no-cache-dir

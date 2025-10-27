@@ -286,7 +286,7 @@ class DemucsProcessor:
         if output_format == 'mp3':
             cmd.append('--mp3')
         
-        # Two-stems mode (single stem extraction)
+        # Two-stems mode (single stem extraction) - supported in Demucs 4.0+
         if stems != 'all':
             cmd.extend(['--two-stems', stems])
         
@@ -299,6 +299,9 @@ class DemucsProcessor:
         """Run demucs command and track progress"""
         import re
         import sys
+        
+        # Log the command being executed
+        logger.info(f"Running demucs command: {' '.join(cmd)}")
         
         # Force unbuffered output
         env = os.environ.copy()
@@ -322,6 +325,9 @@ class DemucsProcessor:
         last_emit_progress = 0  # Track last emitted progress to avoid spam but allow frequent updates
         current_stage = "initializing"
         
+        # Capture all output for error logging
+        all_output_lines = []
+        
         # Track progress from stdout/stderr
         for line in iter(process.stdout.readline, ''):
             # Check if job was cancelled
@@ -333,6 +339,11 @@ class DemucsProcessor:
                 raise Exception("Job was cancelled")
             
             line = line.strip()
+            
+            # Capture output for error reporting
+            if line:
+                all_output_lines.append(line)
+            
             if line:
                 
                 # Parse actual percentage from progress bars
@@ -404,6 +415,14 @@ class DemucsProcessor:
             self.current_process = None
         
         if return_code != 0:
+            # Log the last few lines of output to help debug the issue
+            logger.error(f"Demucs command failed: {' '.join(cmd)}")
+            if all_output_lines:
+                logger.error(f"Last {min(20, len(all_output_lines))} lines of output:")
+                for output_line in all_output_lines[-20:]:
+                    logger.error(f"  {output_line}")
+            else:
+                logger.error("No output captured from demucs process")
             raise Exception(f"Demucs process failed with exit code {return_code}")
     
     def _flatten_output_structure(self, job_id: str):

@@ -368,6 +368,10 @@
                             <button class="transport-btn" id="toggle-mixer-btn" title="Show/Hide Mixer">
                                 <span>🎛️</span>
                             </button>
+                            <div class="autoplay-control">
+                                <input type="checkbox" id="autoplay-checkbox">
+                                <label for="autoplay-checkbox" title="Auto-play when track loads">🔄 Autoplay</label>
+                            </div>
                         </div>
 
                         <!-- Timeline -->
@@ -388,13 +392,22 @@
                             </div>
                             <div class="mixer-master">
                                 <h4>Master</h4>
-                                <div class="mixer-channel">
-                                    <div class="knob-container">
-                                        <label>Volume</label>
-                                        <div class="knob" id="master-volume-knob" data-value="0.8">
-                                            <div class="knob-indicator"></div>
+                                <div class="mixer-master-content">
+                                    <div class="spectrum-analyzer-container">
+                                        <canvas id="spectrum-canvas"></canvas>
+                                    </div>
+                                    <div class="mixer-channel">
+                                        <div class="knob-container">
+                                            <label>Volume</label>
+                                            <div class="knob" id="master-volume-knob" data-value="1">
+                                                <div class="knob-indicator"></div>
+                                            </div>
+                                            <span class="knob-value" id="master-volume-value">100%</span>
                                         </div>
-                                        <span class="knob-value" id="master-volume-value">80%</span>
+                                        <div class="master-clear-buttons" id="master-clear-buttons" style="display: none;">
+                                            <button id="clear-mute-btn" class="master-clear-btn" title="Clear all mutes">Clear Mute</button>
+                                            <button id="clear-solo-btn" class="master-clear-btn" title="Clear all solos">Clear Solo</button>
+                                        </div>
                                     </div>
                                 </div>
                             </div>

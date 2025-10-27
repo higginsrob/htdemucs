@@ -23,7 +23,3 @@ pydantic==2.5.0
 # File handling
 werkzeug==3.0.1
 python-magic==0.4.27
-
-# YouTube support
-yt-dlp==2024.10.22
-

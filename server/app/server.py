@@ -1030,6 +1030,9 @@ def start_cleanup_scheduler():
     import time
     
     def cleanup_loop():
+        # Wait before first run (don't cleanup immediately after loading jobs from disk)
+        time.sleep(900)  # Wait 15 minutes before first cleanup
+        
         while True:
             try:
                 cleaned = job_manager.cleanup_old_jobs()
@@ -1043,7 +1046,7 @@ def start_cleanup_scheduler():
     
     thread = threading.Thread(target=cleanup_loop, daemon=True)
     thread.start()
-    logger.info("Cleanup scheduler started")
+    logger.info("Cleanup scheduler started (first run in 15 minutes)")
 
 
 # ============================================================================

@@ -123,7 +123,7 @@ server/
 
 ### Dockerfile Highlights
 
-- **Base Image:** `xserrat/facebook-demucs:latest` (reuses CLI image)
+- **Base Image:** `higginsrob/htdemucs:demucs` (reuses CLI image)
 - **Port:** 8080 (configurable via `SERVER_PORT`)
 - **Health Check:** Every 30 seconds via HTTP
 - **Job Storage:** `/tmp/demucs-jobs`

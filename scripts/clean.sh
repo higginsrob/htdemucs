@@ -113,16 +113,45 @@ if [ "$CLEAN_MODELS" = true ]; then
     fi
 fi
 
-# Clean Docker image
+# Clean Docker images
 if [ "$CLEAN_DOCKER" = true ]; then
-    echo -n "Removing Docker image... "
+    echo "Removing Docker images..."
+    TOTAL_SIZE=0
+    
+    # Remove server image
+    if docker image inspect higginsrob/htdemucs:latest > /dev/null 2>&1; then
+        SIZE=$(docker image inspect higginsrob/htdemucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+        docker rmi higginsrob/htdemucs:latest > /dev/null 2>&1
+        echo -e "  Server image: ${GREEN}✓${NC} (freed $(printf "%.2fGB" "$SIZE"))"
+        TOTAL_SIZE=$(echo "$TOTAL_SIZE + $SIZE" | bc)
+    fi
+    
+    # Remove server alias
+    if docker image inspect higginsrob/htdemucs:server > /dev/null 2>&1; then
+        docker rmi higginsrob/htdemucs:server > /dev/null 2>&1
+        echo -e "  Server alias: ${GREEN}✓${NC}"
+    fi
+    
+    # Remove base image
+    if docker image inspect higginsrob/htdemucs:demucs > /dev/null 2>&1; then
+        SIZE=$(docker image inspect higginsrob/htdemucs:demucs --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+        docker rmi higginsrob/htdemucs:demucs > /dev/null 2>&1
+        echo -e "  Base image: ${GREEN}✓${NC} (freed $(printf "%.2fGB" "$SIZE"))"
+        TOTAL_SIZE=$(echo "$TOTAL_SIZE + $SIZE" | bc)
+    fi
+    
+    # Remove old image if present
     if docker image inspect xserrat/facebook-demucs:latest > /dev/null 2>&1; then
         SIZE=$(docker image inspect xserrat/facebook-demucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
         docker rmi xserrat/facebook-demucs:latest > /dev/null 2>&1
-        printf "${GREEN}✓${NC} (freed %.2fGB)\n" "$SIZE"
-        echo -e "  ${YELLOW}Note: Image will rebuild on next 'make build' or 'make run'${NC}"
+        echo -e "  Old image: ${GREEN}✓${NC} (freed $(printf "%.2fGB" "$SIZE"))"
+        TOTAL_SIZE=$(echo "$TOTAL_SIZE + $SIZE" | bc)
+    fi
+    
+    if [ $(echo "$TOTAL_SIZE > 0" | bc) -eq 1 ]; then
+        echo -e "  ${YELLOW}Note: Images will rebuild on next 'make build' or 'make server-build'${NC}"
     else
-        echo -e "${YELLOW}⚠${NC} Image not found"
+        echo -e "  ${YELLOW}⚠${NC} No images found to remove"
     fi
 fi
 

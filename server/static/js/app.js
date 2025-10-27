@@ -1585,8 +1585,22 @@ function initPlayer() {
 
 async function loadTrackIntoPlayer(jobId) {
     try {
+        // Resume AudioContext on user interaction (required by browsers)
+        if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
+            await Tone.context.resume();
+            console.log('AudioContext resumed');
+        }
+        
         // Fetch job details
         const response = await fetch(`/api/status/${jobId}`);
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Failed to fetch job status:', response.status, errorText);
+            showToast('error', 'Error', `Failed to load track: ${response.status}`);
+            return;
+        }
+        
         const job = await response.json();
         
         if (job.status !== 'completed') {
@@ -1810,6 +1824,11 @@ function togglePlayPause() {
 }
 
 async function startPlayback() {
+    // Ensure AudioContext is running (required by browsers)
+    if (Tone.context.state !== 'running') {
+        await Tone.context.resume();
+    }
+    
     // Start Tone.js transport
     await Tone.start();
     

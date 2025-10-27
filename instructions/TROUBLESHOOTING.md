@@ -38,7 +38,7 @@ Error during build: [various errors]
 ```bash
 # Retry with no cache
 cd demucs
-docker build --no-cache -t xserrat/facebook-demucs:latest .
+docker build --no-cache -t higginsrob/htdemucs:demucs .
 ```
 
 **2. Disk Space:**
@@ -57,7 +57,7 @@ make clean-all
 ```bash
 # Build for x86-64 (slower via emulation)
 cd demucs
-docker build --platform linux/amd64 -t xserrat/facebook-demucs:latest .
+docker build --platform linux/amd64 -t higginsrob/htdemucs:demucs .
 ```
 
 ---

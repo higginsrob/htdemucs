@@ -67,7 +67,7 @@ server/
 ```bash
 make build
 ```
-Builds `xserrat/facebook-demucs:latest` from the Dockerfile.
+Builds `higginsrob/htdemucs:demucs` from the Dockerfile.
 
 #### Running Demucs
 
@@ -147,7 +147,7 @@ Launches bash inside the container for manual experimentation.
 
 ```bash
 # Build with no cache
-cd demucs && docker build --no-cache -t xserrat/facebook-demucs:latest .
+cd demucs && docker build --no-cache -t higginsrob/htdemucs:demucs .
 
 # Inspect running container
 docker exec -it demucs /bin/bash

@@ -2,7 +2,7 @@
 # Based on the demucs CLI Docker image but adds a web interface
 
 # Start from the demucs base image
-ARG BASE_IMAGE=higginsrob/htdemucs:demucs
+ARG BASE_IMAGE=xserrat/facebook-demucs:latest
 FROM ${BASE_IMAGE}
 
 USER root
@@ -17,6 +17,9 @@ RUN apt update && apt install -y --no-install-recommends \
 
 # Copy requirements first for better layer caching
 COPY requirements.txt /app/requirements.txt
+
+# Upgrade pip first to ensure compatibility with latest packages
+RUN python3 -m pip install --upgrade pip
 
 # Install server dependencies
 RUN python3 -m pip install -r /app/requirements.txt --no-cache-dir

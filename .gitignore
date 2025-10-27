@@ -1,10 +1,12 @@
 demucs/input/*
 demucs/models/*
 demucs/output/*
+output/*
 
 !demucs/input/.gitkeep
 !demucs/models/.gitkeep
 !demucs/output/.gitkeep
+!output/.gitkeep
 
 # Misc
 .DS_Store

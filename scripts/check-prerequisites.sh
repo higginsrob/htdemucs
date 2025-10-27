@@ -98,14 +98,33 @@ fi
 
 echo ""
 
-# Check Docker image
-echo -n "Demucs Docker Image: "
-if docker image inspect xserrat/facebook-demucs:latest > /dev/null 2>&1; then
-    SIZE=$(docker image inspect xserrat/facebook-demucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
-    printf "${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+# Check Docker images
+echo "Demucs Docker Images:"
+BASE_FOUND=false
+SERVER_FOUND=false
+
+if docker image inspect higginsrob/htdemucs:demucs > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/htdemucs:demucs --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "  Base (CLI):   ${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+    BASE_FOUND=true
 else
-    echo -e "${YELLOW}⚠${NC} Not built yet"
-    echo "  └─ Run 'make build' to build the image"
+    echo -e "  Base (CLI):   ${YELLOW}⚠${NC} Not built yet"
+    echo "                └─ Run 'make build' to build the base image"
+fi
+
+if docker image inspect higginsrob/htdemucs:latest > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/htdemucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "  Server (Web): ${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+    SERVER_FOUND=true
+else
+    echo -e "  Server (Web): ${YELLOW}⚠${NC} Not built yet"
+    echo "                └─ Run 'make server-build' to build the server image"
+fi
+
+# Check for old image
+if docker image inspect xserrat/facebook-demucs:latest > /dev/null 2>&1; then
+    echo -e "  ${YELLOW}⚠${NC} Old image (xserrat/facebook-demucs:latest) found"
+    echo "     └─ Run 'make clean-docker' to remove old images"
 fi
 
 echo ""

@@ -197,7 +197,7 @@ pydantic==2.5.0  # For request validation
 ## Dockerfile Template
 
 ```dockerfile
-FROM xserrat/facebook-demucs:latest
+FROM higginsrob/htdemucs:demucs
 
 # Install web server dependencies
 RUN apt update && apt install -y --no-install-recommends \

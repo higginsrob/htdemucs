@@ -469,7 +469,11 @@ def get_job_status(job_id):
         
         if job.completed_at:
             response['completed_at'] = job.completed_at.isoformat()
-            response['processing_time_seconds'] = (job.completed_at - job.started_at).total_seconds()
+            if job.started_at:
+                response['processing_time_seconds'] = (job.completed_at - job.started_at).total_seconds()
+            else:
+                # Fallback to created_at if started_at is not set
+                response['processing_time_seconds'] = (job.completed_at - job.created_at).total_seconds()
         
         if job.error_message:
             response['error_message'] = job.error_message

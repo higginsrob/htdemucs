@@ -25,13 +25,22 @@ ifneq ($(splittrack),)
 endif
 
 # Construct commands
+docker-local-run-command = docker run --rm -i \
+	--name=demucs \
+	$(docker-gpu-option) \
+	-v $(current-dir)demucs/input:/data/input \
+	-v $(current-dir)demucs/output:/data/output \
+	-v $(current-dir)demucs/models:/data/models \
+	higginsrob/htdemucs:local
+
+# Construct commands
 docker-run-command = docker run --rm -i \
 	--name=demucs \
 	$(docker-gpu-option) \
 	-v $(current-dir)demucs/input:/data/input \
 	-v $(current-dir)demucs/output:/data/output \
 	-v $(current-dir)demucs/models:/data/models \
-	xserrat/facebook-demucs:latest
+	higginsrob/htdemucs:latest
 
 demucs-command = "python3 -m demucs -n $(model) \
 	--out /data/output \
@@ -49,19 +58,20 @@ help: ## Display available targets
 
 .PHONY:
 .SILENT:
+run-local: init build ## Run demucs to split the specified track in the input folder
+	@echo $(docker-local-run-command) $(demucs-command)
+	@cd server && $(docker-local-run-command) $(demucs-command)
+
+.PHONY:
+.SILENT:
 run: init build ## Run demucs to split the specified track in the input folder
 	@echo $(docker-run-command) $(demucs-command)
-	@cd demucs && $(docker-run-command) $(demucs-command)
+	@cd server && $(docker-run-command) $(demucs-command)
 
 .PHONY:
 .SILENT:
 run-interactive: init build ## Run the docker container interactively to experiment with demucs options
-	$(docker-run-command) /bin/bash
-
-.PHONY:
-.SILENT:
-build: ## Build the docker image which supports running demucs with CPU only or with Nvidia CUDA on a supported GPU
-	@cd demucs && docker build -t higginsrob/htdemucs:latest .
+	$(docker-local-run-command) /bin/bash
 
 .PHONY:
 .SILENT:
@@ -95,21 +105,21 @@ clean-all: ## Remove everything (outputs, models, and docker image)
 
 .PHONY:
 .SILENT:
-server-build: build ## Build the production web server image
-	@echo "Building demucs web server image..."
-	@cd server && docker build -t demucs:latest .
+build: ## Build the docker image which supports running demucs with CPU only or with Nvidia CUDA on a supported GPU
+	@echo "Building demucs base image..."
+	@cd server && docker build -t higginsrob/htdemucs:local .
 	@echo "Server image built successfully!"
 
 .PHONY:
 .SILENT:
-server-build-no-cache: build ## Build the production web server image
-	@echo "Building demucs web server image..."
-	@cd server && docker build --no-cache -t demucs:latest .
+build-no-cache: build ## Build the production web server image without cache
+	@echo "Building demucs web server image (no cache)..."
+	@cd server && docker build --no-cache -t higginsrob/htdemucs:local .
 	@echo "Server image built successfully!"
 
 .PHONY:
 .SILENT:
-server-run: server-stop server-build ## Run the production web server (port 8080)
+run: stop build ## Run the production web server (port 8080)
 	@echo "Starting demucs web server on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run -d --rm \
@@ -118,13 +128,13 @@ server-run: server-stop server-build ## Run the production web server (port 8080
 		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-e OUTPUT_DIR=/app/output \
-		demucs:latest
-	@echo "Server started! View logs with: make server-logs"
+		higginsrob/htdemucs:latest
+	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
 
 .PHONY:
 .SILENT:
-server-run-gpu: ## Run the production web server with GPU support
+run-gpu: ## Run the production web server with GPU support
 	@echo "Starting demucs web server with GPU on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run -d --rm \
@@ -134,13 +144,13 @@ server-run-gpu: ## Run the production web server with GPU support
 		-v $(current-dir)demucs/output:/app/output \
 		-v $(current-dir)demucs/models:/data/models \
 		-e OUTPUT_DIR=/app/output \
-		demucs:latest
-	@echo "Server started! View logs with: make server-logs"
+		higginsrob/htdemucs:latest
+	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
 
 .PHONY:
 .SILENT:
-dev: server-stop server-build ## Run the server in development mode (with hot reload)
+dev: stop build ## Run the server in development mode (with hot reload)
 	@echo "Starting demucs web server on http://localhost:8080"
 	@echo "Output directory: $(current-dir)demucs/output (persistent storage)"
 	@docker run --rm \
@@ -150,17 +160,31 @@ dev: server-stop server-build ## Run the server in development mode (with hot re
 		-v $(current-dir)demucs/models:/data/models \
 		-v $(current-dir)server/static:/app/static \
 		-e OUTPUT_DIR=/app/output \
-		demucs:latest
-	@echo "Server started! View logs with: make server-logs"
+		higginsrob/htdemucs:local
+	@echo "Server started! View logs with: make logs"
 	@echo "Open in browser: http://localhost:8080"
 
 .PHONY:
 .SILENT:
-server-stop: ## Stop the running server container
+stop: ## Stop the running server container
 	@docker stop demucs 2>/dev/null || true
 	@echo "Server stopped"
 
 .PHONY:
 .SILENT:
-server-logs: ## Show server logs
+logs: ## Show server logs
 	@docker logs -f demucs
+
+.PHONY:
+.SILENT:
+push: build ## Push the production web server image to Docker Hub
+	@echo "Pushing demucs web server image to Docker Hub..."
+	@docker push higginsrob/htdemucs:local higginsrob/htdemucs:latest
+	@echo "Server image pushed successfully!"
+
+.PHONY:
+.SILENT:
+pull: ## Pull the production web server image from Docker Hub
+	@echo "Pulling demucs web server image from Docker Hub..."
+	@docker pull higginsrob/htdemucs:latest
+	@echo "Server image pulled successfully!"

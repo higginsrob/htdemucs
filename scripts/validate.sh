@@ -34,13 +34,13 @@ if [ ! -f "demucs/input/test.mp3" ]; then
 fi
 echo -e "${GREEN}✓${NC}"
 
-# Build image if it doesn't exist
-echo -n "Checking for demucs Docker image... "
-if ! docker image inspect xserrat/facebook-demucs:latest > /dev/null 2>&1; then
+# Build base image if it doesn't exist
+echo -n "Checking for demucs base Docker image... "
+if ! docker image inspect higginsrob/htdemucs:demucs > /dev/null 2>&1; then
     echo -e "${YELLOW}⚠${NC}"
-    echo "Image not found. Building now (this may take a few minutes)..."
+    echo "Base image not found. Building now (this may take a few minutes)..."
     make build
-    echo -e "${GREEN}✓${NC} Image built successfully"
+    echo -e "${GREEN}✓${NC} Base image built successfully"
 else
     echo -e "${GREEN}✓${NC}"
 fi

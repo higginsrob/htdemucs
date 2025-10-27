@@ -38,6 +38,9 @@ class YouTubeService:
     """Service for downloading and processing YouTube content using CLI"""
     
     def __init__(self):
+        # Get the host output directory for Docker-in-Docker volume mounts
+        self.host_output_dir = os.getenv('HOST_OUTPUT_DIR', '/app/output')
+        
         # Base command-line arguments for yt-dlp with aggressive bypass options
         self.base_args = [
             '--no-warnings',
@@ -60,11 +63,11 @@ class YouTubeService:
             self.base_args.extend(['--cookies', str(cookies_path)])
             logger.info("Using cookies file for YouTube authentication")
         
-        logger.info("YouTubeService initialized (using CLI yt-dlp with aggressive bypass)")
+        logger.info(f"YouTubeService initialized (using Docker yt-dlp, host path: {self.host_output_dir})")
     
     def _run_ytdlp(self, args: List[str]) -> Optional[Dict]:
         """
-        Run yt-dlp CLI command and return JSON output
+        Run yt-dlp via Docker container and return JSON output
         
         Args:
             args: List of command-line arguments
@@ -73,11 +76,18 @@ class YouTubeService:
             Parsed JSON output or None if failed
         """
         try:
-            cmd = ['yt-dlp'] + self.base_args + args
-            logger.info(f"Running yt-dlp: {' '.join(cmd)}")
+            # Run yt-dlp in a separate Docker container
+            # Mount the host output directory (not the container's /app/output)
+            docker_cmd = [
+                'docker', 'run', '--rm',
+                '-v', f'{self.host_output_dir}:/data/output',
+                'higginsrob/yt-dlp:latest'
+            ] + self.base_args + args
+            
+            logger.info(f"Running yt-dlp in Docker: {' '.join(docker_cmd)}")
             
             result = subprocess.run(
-                cmd,
+                docker_cmd,
                 capture_output=True,
                 text=True,
                 timeout=300  # 5 minute timeout
@@ -215,7 +225,7 @@ class YouTubeService:
         
         Args:
             url: YouTube video URL
-            output_path: Directory to save the audio file
+            output_path: Directory to save the audio file (server container path)
         
         Returns:
             (Path to downloaded file, YouTubeMetadata) or (None, None) if failed
@@ -240,16 +250,25 @@ class YouTubeService:
             safe_title = "".join(c for c in metadata.title if c.isalnum() or c in (' ', '-', '_')).strip()
             safe_title = safe_title[:100]  # Limit length
             
-            output_template = str(output_path / f"{safe_title}.%(ext)s")
+            # Convert the server container path to the yt-dlp container path
+            # Server container has paths like: /tmp/demucs-jobs/<job_id>/input/
+            # But yt-dlp container only has /data/output mounted
+            # We need to create the full host path, then convert to yt-dlp container path
+            output_path_str = str(output_path)
+            
+            # If the path is under /tmp/demucs-jobs, we need to mount that separately
+            # For now, let's use /data/output in the yt-dlp container
+            ytdlp_output_path = f"/data/output/{safe_title}.%(ext)s"
             
             logger.info(f"Downloading audio for: {metadata.title}")
+            logger.info(f"Server path: {output_path}, yt-dlp path: {ytdlp_output_path}")
             
             # Download using yt-dlp CLI
             args = [
                 '--extract-audio',
                 '--audio-format', 'mp3',
                 '--audio-quality', '0',  # Best quality
-                '--output', output_template,
+                '--output', ytdlp_output_path,
                 '--no-playlist',
                 url
             ]
@@ -260,14 +279,20 @@ class YouTubeService:
                 logger.error("Download failed")
                 return None, None
             
-            # Find the downloaded file
-            downloaded_file = output_path / f"{safe_title}.mp3"
+            # The file was downloaded to the host output directory
+            # Now we need to move it from there to the job's input directory
+            import shutil
+            source_file = Path(f"{os.getenv('OUTPUT_DIR', '/app/output')}/{safe_title}.mp3")
+            target_file = output_path / f"{safe_title}.mp3"
             
-            if downloaded_file.exists():
-                logger.info(f"Successfully downloaded: {downloaded_file}")
-                return downloaded_file, metadata
+            if source_file.exists():
+                logger.info(f"Moving downloaded file from {source_file} to {target_file}")
+                target_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(source_file), str(target_file))
+                logger.info(f"Successfully downloaded and moved: {target_file}")
+                return target_file, metadata
             else:
-                logger.error(f"Downloaded file not found: {downloaded_file}")
+                logger.error(f"Downloaded file not found: {source_file}")
                 return None, None
         
         except Exception as e:

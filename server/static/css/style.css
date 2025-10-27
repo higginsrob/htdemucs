@@ -1496,6 +1496,40 @@ footer a:hover {
     box-shadow: 0 8px 24px rgba(99, 102, 241, 0.4);
 }
 
+.autoplay-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: var(--surface-light);
+    border-radius: 20px;
+    margin-left: 16px;
+}
+
+.autoplay-control input[type="checkbox"] {
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--primary-color);
+}
+
+.autoplay-control label {
+    cursor: pointer;
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    user-select: none;
+    transition: color 0.3s ease;
+}
+
+.autoplay-control label:hover {
+    color: var(--text-primary);
+}
+
+.autoplay-control input[type="checkbox"]:checked + label {
+    color: var(--primary-color);
+    font-weight: 600;
+}
+
 /* Timeline */
 .player-timeline {
     display: flex;
@@ -1588,12 +1622,14 @@ footer a:hover {
 
 .channel-controls {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    align-items: center;
     gap: 16px;
 }
 
 .button-controls {
     display: flex;
+    flex-direction: column;
     justify-content: center;
     gap: 8px;
 }
@@ -1686,12 +1722,60 @@ footer a:hover {
     min-height: 18px;
 }
 
+/* VU Meters */
+.vu-meters {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    height: 156px; /* Height of 2 knobs + gap (60 + 8 + 60 + padding) */
+}
+
+.vu-meter {
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 2px;
+    width: 10px;
+    height: 100%;
+    background: var(--bg-primary);
+    border-radius: 4px;
+    padding: 3px 2px;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.vu-led {
+    height: calc((100% - 14px) / 8); /* 8 LEDs with gaps */
+    width: 100%;
+    border-radius: 2px;
+    background: var(--surface);
+    transition: all 0.05s ease;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.vu-led.green {
+    --led-color: #00ff00;
+}
+
+.vu-led.yellow {
+    --led-color: #ffff00;
+}
+
+.vu-led.red {
+    --led-color: #ff0000;
+}
+
+.vu-led.active {
+    background: var(--led-color);
+    box-shadow: 
+        0 0 4px var(--led-color),
+        0 0 8px var(--led-color),
+        inset 0 1px 2px rgba(255, 255, 255, 0.3);
+}
+
 /* Master Section */
 .mixer-master {
     background: var(--surface-light);
     border-radius: 12px;
     padding: 24px;
-    text-align: center;
 }
 
 .mixer-master h4 {
@@ -1699,6 +1783,65 @@ footer a:hover {
     margin-bottom: 16px;
     color: var(--primary-color);
     font-weight: 700;
+    text-align: center;
+}
+
+.mixer-master-content {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+}
+
+.spectrum-analyzer-container {
+    flex: 1;
+    height: 200px;
+    background: var(--bg-primary);
+    border-radius: 8px;
+    overflow: hidden;
+    order: 2px solid var(--border-color);
+}
+
+#spectrum-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.mixer-master .mixer-channel {
+    flex-shrink: 0;
+}
+
+/* Master Clear Buttons */
+.master-clear-buttons {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-top: 16px;
+}
+
+.master-clear-btn {
+    padding: 8px 16px;
+    border: none;
+    border-radius: 6px;
+    background: var(--surface-dark);
+    color: var(--text-primary);
+    font-size: 0.875rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.master-clear-btn:hover {
+    background: var(--primary-color);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.3);
+}
+
+.master-clear-btn:active {
+    transform: translateY(0);
 }
 
 /* Clickable Library Items */
@@ -1741,6 +1884,8 @@ footer a:hover {
     
     .player-transport {
         gap: 12px;
+        flex-wrap: wrap;
+        justify-content: center;
     }
     
     .transport-btn {
@@ -1753,6 +1898,16 @@ footer a:hover {
         width: 60px;
         height: 60px;
         font-size: 1.5rem;
+    }
+    
+    .autoplay-control {
+        margin: 8px 0 0 0;
+        padding: 6px 12px;
+        gap: 6px;
+    }
+    
+    .autoplay-control label {
+        font-size: 0.85rem;
     }
     
     .mixer-channels {

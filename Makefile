@@ -178,9 +178,10 @@ logs: ## Show server logs
 .SILENT:
 push: build ## Push the production web server image to Docker Hub
 	@echo "Pushing demucs web server image to Docker Hub..."
-	@docker push higginsrob/htdemucs:local higginsrob/htdemucs:latest
-	@docker push higginsrob/htdemucs:local higginsrob/demucs-base:latest
-	@docker push higginsrob/htdemucs:local higginsrob/yt-dlp:latest
+	@docker tag higginsrob/htdemucs:local higginsrob/htdemucs:latest
+	@docker push higginsrob/htdemucs:latest
+	@docker push higginsrob/demucs-base:latest
+	@docker push higginsrob/yt-dlp:latest
 	@echo "Server image pushed successfully!"
 
 .PHONY:

@@ -1,6 +1,6 @@
 # Docker + HTDemucs Web Application
 
-[![Build and Push Docker Images](https://github.com/higginsrob/htdemucs/actions/workflows/docker-build.yml/badge.svg)](https://github.com/higginsrob/htdemucs/actions/workflows/docker-build.yml)
+[![Deploy Landing Page to GitHub Pages](https://github.com/higginsrob/htdemucs/actions/workflows/deploy-landing.yml/badge.svg)](https://github.com/higginsrob/htdemucs/actions/workflows/deploy-landing.yml)
 [![Docker Hub](https://img.shields.io/docker/v/higginsrob/htdemucs?label=docker%20hub&logo=docker)](https://hub.docker.com/r/higginsrob/htdemucs)
 [![Docker Pulls](https://img.shields.io/docker/pulls/higginsrob/htdemucs?logo=docker)](https://hub.docker.com/r/higginsrob/htdemucs)
 

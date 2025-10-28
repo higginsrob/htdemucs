@@ -24,6 +24,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
 
       - name: Log in to Docker Hub
         if: github.event_name != 'pull_request'
@@ -57,7 +59,7 @@ jobs:
           labels: ${{ steps.meta-demucs.outputs.labels }}
           cache-from: type=registry,ref=${{ env.DOCKERHUB_REPO }}:demucs-buildcache
           cache-to: type=registry,ref=${{ env.DOCKERHUB_REPO }}:demucs-buildcache,mode=max
-          platforms: linux/amd64
+          platforms: linux/amd64,linux/arm64
 
       - name: Extract metadata for server image
         id: meta-server
@@ -81,6 +83,7 @@ jobs:
           file: ./server/Dockerfile.base
           push: ${{ github.event_name != 'pull_request' }}
           tags: higginsrob/demucs-base:latest
+          platforms: linux/amd64,linux/arm64
 
       - name: Build and push yt-dlp image
         uses: docker/build-push-action@v5
@@ -89,6 +92,7 @@ jobs:
           file: ./server/Dockerfile.ytdlp
           push: ${{ github.event_name != 'pull_request' }}
           tags: higginsrob/yt-dlp:latest
+          platforms: linux/amd64,linux/arm64
 
       - name: Build and push server image
         uses: docker/build-push-action@v5
@@ -97,6 +101,7 @@ jobs:
           file: ./server/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: higginsrob/htdemucs:latest
+          platforms: linux/amd64,linux/arm64
 
       - name: Update Docker Hub description
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'

@@ -371,6 +371,8 @@
                             <div class="autoplay-control">
                                 <input type="checkbox" id="autoplay-checkbox">
                                 <label for="autoplay-checkbox" title="Auto-play when track loads">🔄 Autoplay</label>
+                                <input type="checkbox" id="shuffle-checkbox">
+                                <label for="shuffle-checkbox" title="Shuffle tracks">🔀 Shuffle</label>
                             </div>
                         </div>
 
@@ -382,6 +384,15 @@
                                 <div class="timeline-handle" id="timeline-handle"></div>
                             </div>
                             <span class="time-display" id="total-time">0:00</span>
+                        </div>
+
+                        <!-- Countdown overlay for autoplay -->
+                        <div class="countdown-overlay" id="countdown-overlay" style="display: none;">
+                            <div class="countdown-content">
+                                <h3>Next song starting in...</h3>
+                                <div class="countdown-number" id="countdown-number">5</div>
+                                <button class="countdown-cancel-btn" id="countdown-cancel-btn">Cancel</button>
+                            </div>
                         </div>
 
                         <!-- Mixer Section -->

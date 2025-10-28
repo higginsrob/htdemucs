@@ -25,6 +25,9 @@ let playerCurrentTime = 0;  // Track current playback position
 let playbackStartTime = 0;  // Timestamp when playback started
 let playerUpdateInterval = null;
 let mixerVisible = false;
+let countdownInterval = null;
+let countdownTimer = null;
+let isLoadingTrack = false; // Flag to prevent countdown during track loading
 let trackConfigs = {
     '4': ['vocals', 'bass', 'drums', 'other'],
     '6': ['vocals', 'bass', 'drums', 'other', 'guitar', 'piano']
@@ -37,7 +40,6 @@ let spectrumCanvas = null;
 let spectrumCtx = null;
 let spectrumAnalyzer = null;
 let spectrumAnimationFrame = null;
-let spectrumDebugCounter = 0;
 
 // ============================================================================
 // Toast Notification Functions
@@ -177,7 +179,11 @@ const prevTrackBtn = document.getElementById('prev-track-btn');
 const nextTrackBtn = document.getElementById('next-track-btn');
 const toggleMixerBtn = document.getElementById('toggle-mixer-btn');
 const autoplayCheckbox = document.getElementById('autoplay-checkbox');
+const shuffleCheckbox = document.getElementById('shuffle-checkbox');
 const currentTimeDisplay = document.getElementById('current-time');
+const countdownOverlay = document.getElementById('countdown-overlay');
+const countdownNumber = document.getElementById('countdown-number');
+const countdownCancelBtn = document.getElementById('countdown-cancel-btn');
 const totalTimeDisplay = document.getElementById('total-time');
 const timelineTrack = document.getElementById('timeline-track');
 const timelineProgress = document.getElementById('timeline-progress');
@@ -411,6 +417,26 @@ function loadAutoplayPreference() {
     return false; // Default to false
 }
 
+function saveShufflePreference(enabled) {
+    try {
+        localStorage.setItem('demucs_shuffle', JSON.stringify(enabled));
+    } catch (error) {
+        console.warn('Failed to save shuffle preference:', error);
+    }
+}
+
+function loadShufflePreference() {
+    try {
+        const saved = localStorage.getItem('demucs_shuffle');
+        if (saved !== null) {
+            return JSON.parse(saved);
+        }
+    } catch (error) {
+        console.warn('Failed to load shuffle preference:', error);
+    }
+    return false; // Default to false
+}
+
 function updateTrackKnobVisuals(trackName, settings) {
     // Update volume knob
     const volumeKnob = document.getElementById(`${trackName}-volume-knob`);
@@ -537,6 +563,23 @@ function setupEventListeners() {
         autoplayCheckbox.addEventListener('change', () => {
             saveAutoplayPreference(autoplayCheckbox.checked);
         });
+    }
+    
+    // Shuffle checkbox
+    if (shuffleCheckbox) {
+        // Load saved shuffle preference
+        const shuffleEnabled = loadShufflePreference();
+        shuffleCheckbox.checked = shuffleEnabled;
+        
+        // Listen for changes and save preference
+        shuffleCheckbox.addEventListener('change', () => {
+            saveShufflePreference(shuffleCheckbox.checked);
+        });
+    }
+    
+    // Countdown cancel button
+    if (countdownCancelBtn) {
+        countdownCancelBtn.addEventListener('click', cancelCountdown);
     }
     
     // Timeline scrubbing
@@ -1360,8 +1403,14 @@ function switchView(view, saveState = true) {
         
         // Initialize and start spectrum analyzer when player view is shown
         setTimeout(() => {
-            startSpectrumAnalyzer();
+            if (mixerVisible && playerIsPlaying) {
+                startSpectrumAnalyzer();
+            }
         }, 100);
+    } else {
+        // When switching away from player view, stop spectrum analyzer and cancel countdown
+        stopSpectrumAnalyzer();
+        cancelCountdown();
     }
     
     // Scroll to top smoothly
@@ -1682,6 +1731,12 @@ function initPlayer() {
 
 async function loadTrackIntoPlayer(jobId) {
     try {
+        // Set flag to prevent countdown during loading
+        isLoadingTrack = true;
+        
+        // Cancel any countdown
+        cancelCountdown();
+        
         // Try to resume AudioContext if possible (browsers require user gesture for autoplay)
         // Don't block loading - AudioContext will resume when user clicks play button
         if (typeof Tone !== 'undefined' && Tone.context.state !== 'running') {
@@ -1732,9 +1787,15 @@ async function loadTrackIntoPlayer(jobId) {
         // Save the current player job ID to localStorage
         savePlayerState(jobId);
         
-        // Determine track configuration (4 or 6 tracks)
-        const is6Stem = job.model && job.model.includes('6s');
-        const tracks = is6Stem ? trackConfigs['6'] : trackConfigs['4'];
+        // Fetch available stems from backend
+        const stemsResponse = await fetch(`/api/streams/${jobId}`);
+        if (!stemsResponse.ok) {
+            throw new Error('Failed to fetch available stems');
+        }
+        const stemsData = await stemsResponse.json();
+        const tracks = stemsData.stems || [];
+        
+        console.log('Available stems for job:', tracks);
         
         // Update UI
         playerSongTitle.textContent = job.filename || 'Unknown Track';
@@ -1781,9 +1842,14 @@ async function loadTrackIntoPlayer(jobId) {
             }, 300);
         }
         
+        // Clear loading flag after successful load
+        isLoadingTrack = false;
+        
     } catch (error) {
         console.error('Error loading track:', error);
         showToast('error', 'Load Failed', 'Failed to load track into player');
+        // Clear loading flag on error too
+        isLoadingTrack = false;
     }
 }
 
@@ -1794,7 +1860,7 @@ async function initializeTracks(jobId, trackNames) {
         
         // Initialize spectrum analyzer connected to master gain
         if (!spectrumAnalyzer) {
-            spectrumAnalyzer = new Tone.Analyser('fft', 512);
+            spectrumAnalyzer = new Tone.Analyser('fft', 64);
             masterGain.connect(spectrumAnalyzer);
             console.log('Spectrum analyzer created and connected to master gain');
         }
@@ -1905,6 +1971,16 @@ function handleAudioChunk(data) {
     }
 }
 
+function formatTrackDisplayName(trackName) {
+    // Handle "no_*" stems specially
+    if (trackName.startsWith('no_')) {
+        const baseName = trackName.slice(3); // Remove 'no_' prefix
+        return `No ${baseName.charAt(0).toUpperCase() + baseName.slice(1)}`;
+    }
+    // Capitalize first letter for other stems
+    return trackName.charAt(0).toUpperCase() + trackName.slice(1);
+}
+
 function buildMixerUI(trackNames) {
     mixerChannels.innerHTML = '';
     
@@ -1912,7 +1988,7 @@ function buildMixerUI(trackNames) {
         const channelDiv = document.createElement('div');
         channelDiv.className = 'mixer-channel';
         channelDiv.innerHTML = `
-            <h4>${trackName.charAt(0).toUpperCase() + trackName.slice(1)}</h4>
+            <h4>${formatTrackDisplayName(trackName)}</h4>
             <div class="channel-controls">
                 <div class="button-controls">
                     <button class="mixer-btn" id="${trackName}-mute" data-track="${trackName}" data-action="mute">M</button>
@@ -2019,14 +2095,25 @@ async function startPlayback() {
     
     // Start timeline update
     playerUpdateInterval = setInterval(updateTimeline, 100);
+    
+    // Start spectrum analyzer if mixer is visible
+    if (mixerVisible) {
+        startSpectrumAnalyzer();
+    }
 }
 
 function pausePlayback() {
+    // Cancel any countdown
+    cancelCountdown();
+    
     // Update current time before stopping
     if (playerUpdateInterval) {
         clearInterval(playerUpdateInterval);
         playerUpdateInterval = null;
     }
+    
+    // Stop spectrum analyzer
+    stopSpectrumAnalyzer();
     
     // Calculate elapsed time
     playerCurrentTime = Tone.now() - playbackStartTime;
@@ -2044,6 +2131,9 @@ function pausePlayback() {
 }
 
 function stopPlayback() {
+    // Cancel any countdown
+    cancelCountdown();
+    
     pausePlayback();
     
     // Reset to beginning
@@ -2100,9 +2190,28 @@ function playNextTrack() {
         return;
     }
     
-    const currentIndex = libraryJobs.findIndex(j => j.job_id === currentPlayerJob?.job_id);
-    const nextIndex = (currentIndex + 1) % libraryJobs.length;
-    const nextJob = libraryJobs[nextIndex];
+    let nextJob;
+    
+    // If shuffle is enabled, pick a random track
+    if (shuffleCheckbox && shuffleCheckbox.checked) {
+        // Get all completed jobs (excluding current)
+        const completedJobs = libraryJobs.filter(j => j.status === 'completed');
+        const otherJobs = completedJobs.filter(j => j.job_id !== currentPlayerJob?.job_id);
+        
+        if (otherJobs.length === 0) {
+            showToast('info', 'No Other Tracks', 'No other tracks to shuffle to.');
+            return;
+        }
+        
+        // Pick a random job
+        const randomIndex = Math.floor(Math.random() * otherJobs.length);
+        nextJob = otherJobs[randomIndex];
+    } else {
+        // Normal sequential playback
+        const currentIndex = libraryJobs.findIndex(j => j.job_id === currentPlayerJob?.job_id);
+        const nextIndex = (currentIndex + 1) % libraryJobs.length;
+        nextJob = libraryJobs[nextIndex];
+    }
     
     if (nextJob && nextJob.status === 'completed') {
         loadTrackIntoPlayer(nextJob.job_id);
@@ -2112,6 +2221,14 @@ function playNextTrack() {
 function toggleMixer() {
     mixerVisible = !mixerVisible;
     playerMixer.style.display = mixerVisible ? 'block' : 'none';
+    
+    // When mixer is hidden, stop animations to save CPU
+    if (!mixerVisible) {
+        stopSpectrumAnalyzer();
+    } else if (playerIsPlaying) {
+        // When mixer becomes visible and we're playing, restart the spectrum analyzer
+        startSpectrumAnalyzer();
+    }
 }
 
 function toggleMute(trackName) {
@@ -2230,6 +2347,74 @@ function updateClearButtonsVisibility() {
     }
 }
 
+function startCountdown() {
+    // Don't start if already counting down
+    if (countdownInterval) return;
+    
+    // Clear any existing countdown
+    cancelCountdown();
+    
+    // Stop playback first so the timeline stops updating
+    if (playerIsPlaying) {
+        playerIsPlaying = false;
+        playPauseIcon.textContent = '▶️';
+        
+        // Stop timeline update
+        if (playerUpdateInterval) {
+            clearInterval(playerUpdateInterval);
+            playerUpdateInterval = null;
+        }
+        
+        // Stop spectrum analyzer
+        stopSpectrumAnalyzer();
+        
+        // Stop all players
+        Object.values(playerTracks).forEach(track => {
+            track.player.stop();
+        });
+    }
+    
+    // Show countdown overlay
+    if (countdownOverlay) {
+        countdownOverlay.style.display = 'flex';
+    }
+    
+    let count = 5;
+    countdownNumber.textContent = count;
+    
+    // Update countdown every second
+    countdownInterval = setInterval(() => {
+        count--;
+        countdownNumber.textContent = count;
+        
+        if (count <= 0) {
+            cancelCountdown();
+            // Reset player state and start next track
+            playerCurrentTime = 0;
+            playbackStartTime = 0;
+            playNextTrack();
+        }
+    }, 1000);
+}
+
+function cancelCountdown() {
+    // Clear countdown timer
+    if (countdownInterval) {
+        clearInterval(countdownInterval);
+        countdownInterval = null;
+    }
+    
+    // Hide countdown overlay
+    if (countdownOverlay) {
+        countdownOverlay.style.display = 'none';
+    }
+    
+    // Reset countdown number
+    if (countdownNumber) {
+        countdownNumber.textContent = '5';
+    }
+}
+
 function updateTimeline() {
     if (!currentPlayerJob) return;
     
@@ -2250,12 +2435,20 @@ function updateTimeline() {
     updateVUMeters();
     
     // Auto-stop at end
-    if (playerIsPlaying && currentTime >= playerDuration) {
-        stopPlayback();
+    if (playerIsPlaying && currentTime >= playerDuration && !isLoadingTrack) {
+        if (autoplayCheckbox && autoplayCheckbox.checked && libraryJobs.length > 1) {
+            // Start countdown for autoplay
+            startCountdown();
+        } else {
+            stopPlayback();
+        }
     }
 }
 
 function updateVUMeters() {
+    // Don't update if mixer is hidden (to save CPU)
+    if (!mixerVisible) return;
+    
     // Update VU meters for each track
     Object.entries(playerTracks).forEach(([trackName, track]) => {
         if (!track.meterLeft || !track.meterRight) return;
@@ -2736,55 +2929,59 @@ function initSpectrumAnalyzer() {
     }
     
     spectrumCtx = spectrumCanvas.getContext('2d');
-    
-    // Set canvas size to match container
-    const container = spectrumCanvas.parentElement;
-    if (container) {
-        spectrumCanvas.width = container.clientWidth - 16; // Account for padding
-        spectrumCanvas.height = container.clientHeight - 16;
-    }
-    
-    console.log('Spectrum analyzer initialized', { 
-        canvas: !!spectrumCanvas, 
-        ctx: !!spectrumCtx, 
-        analyzer: !!spectrumAnalyzer 
-    });
 }
 
 function drawSpectrum() {
     if (!spectrumCanvas || !spectrumCtx || !spectrumAnalyzer) {
-        spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        if (mixerVisible) {
+            spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        }
         return;
     }
     
-    const width = spectrumCanvas.parentNode.clientWidth;
-    const height = spectrumCanvas.parentNode.clientHeight;
+    // Don't draw if mixer is hidden (to save CPU)
+    if (!mixerVisible) {
+        return;
+    }
+    
+    const container = spectrumCanvas.parentElement;
+    const width = container.clientWidth;
+    const height = container.clientHeight;
+
+    spectrumCanvas.width = width;
 
     // Get frequency data (Tone.js FFT returns decibel values, typically -100 to 0)
     const data = spectrumAnalyzer.getValue();
     
     if (!data || data.length === 0) {
-        spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        if (mixerVisible) {
+            spectrumAnimationFrame = requestAnimationFrame(drawSpectrum);
+        }
         return;
     }
-    
-    // Debug: Log FFT data occasionally (every ~120 frames, ~2 seconds at 60fps)
-    spectrumDebugCounter++;
     
     // Clear canvas
     spectrumCtx.fillStyle = '#0a0a0a';
     spectrumCtx.fillRect(0, 0, width, height);
     
     // Draw spectrum bars with interlacing
-    const interlaceStep = 2; // Draw every Nth bar (2 = skip every other bar)
-    const barGap = 2; // Black gap between bars in pixels
-    const barWidth = (width / data.length) * interlaceStep;
-    const actualBarWidth = barWidth - barGap;
+    const interlaceStep = 1; // Draw every Nth bar (skip bars for cleaner look)
+    const barGap = 1; // Black gap between bars in pixels
     const minDecibels = -90; // Minimum decibel value to consider
-    const maxDecibels = -10; // Maximum decibel value (loud sounds)
+    const maxDecibels = -14; // Maximum decibel value (loud sounds)
+    
+    // Calculate how many bars we'll actually draw
+    const numBars = Math.floor((data.length / interlaceStep) / 2);
+    
+    // Calculate bar width to fill the entire width
+    const totalGapWidth = (numBars - 1) * barGap;
+    const availableWidth = width - totalGapWidth;
+    const barWidth = availableWidth / numBars;
+    const actualBarWidth = barWidth;
     
     // Draw spectrum bars
-    for (let i = 0; i < data.length; i += interlaceStep) {
+    for (let barIndex = 0; barIndex < numBars; barIndex++) {
+        const i = barIndex * interlaceStep;
         const decibels = data[i];
         
         // Convert decibels to 0-1 range
@@ -2799,8 +2996,11 @@ function drawSpectrum() {
             const lightness = 40 + (normalizedMagnitude * 30); // Brighter at higher values
             spectrumCtx.fillStyle = `hsl(${hue}, ${saturation}%, ${lightness}%)`;
             
+            // Calculate x position to fill the full width
+            const xPos = barIndex * (barWidth + barGap);
+            
             spectrumCtx.fillRect(
-                (i / interlaceStep) * barWidth,
+                xPos,
                 height - barHeight,
                 actualBarWidth,
                 barHeight
@@ -2828,17 +3028,6 @@ function startSpectrumAnalyzer() {
         cancelAnimationFrame(spectrumAnimationFrame);
     }
     initSpectrumAnalyzer();
-    
-    // Log analyzer state for debugging
-    if (spectrumAnalyzer) {
-        console.log('Starting spectrum analyzer', {
-            hasAnalyzer: !!spectrumAnalyzer,
-            hasCanvas: !!spectrumCanvas,
-            canvasSize: spectrumCanvas ? `${spectrumCanvas.width}x${spectrumCanvas.height}` : 'N/A',
-            toneContextState: typeof Tone !== 'undefined' ? Tone.context.state : 'N/A'
-        });
-    }
-    
     drawSpectrum();
 }
 
@@ -2849,7 +3038,7 @@ function stopSpectrumAnalyzer() {
     }
     
     // Clear canvas
-    if (spectrumCanvas && spectrumCtx) {
+    if (spectrumCanvas && spectrumCtx && spectrumCanvas.width && spectrumCanvas.height) {
         spectrumCtx.fillStyle = '#0a0a0a';
         spectrumCtx.fillRect(0, 0, spectrumCanvas.width, spectrumCanvas.height);
     }

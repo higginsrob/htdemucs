@@ -600,6 +600,77 @@ def stream_track_http(job_id, track_name):
         return jsonify({'error': 'Internal server error'}), 500
 
 
+@app.route('/api/streams/<job_id>', methods=['GET'])
+def get_available_streams(job_id):
+    """
+    Get list of available stem files for a job
+    
+    Returns:
+        JSON with array of available stem names
+    """
+    try:
+        job = job_manager.get_job(job_id)
+        
+        if not job:
+            return jsonify({'error': 'Job not found'}), 404
+        
+        if job.status != 'completed':
+            return jsonify({'error': 'Job not completed yet'}), 400
+        
+        # Get output directory
+        output_dir = job_manager.get_output_dir_for_job(job_id)
+        
+        # Determine the correct model output directory
+        model_dir = output_dir / job.model
+        if not model_dir.exists():
+            # Try alternative model directory names
+            for possible_dir in output_dir.iterdir():
+                if possible_dir.is_dir():
+                    model_dir = possible_dir
+                    break
+        
+        if not model_dir.exists():
+            return jsonify({'error': 'Output directory not found'}), 404
+        
+        # List all audio files in the model directory
+        output_format = job.output_format or 'mp3'
+        available_stems = []
+        
+        for file in model_dir.iterdir():
+            if file.is_file() and file.suffix[1:] == output_format:
+                stem_name = file.stem
+                available_stems.append(stem_name)
+        
+        # Sort stems to put them in a consistent order
+        # Order: vocals, bass, drums, guitar, piano, other, then any "no_*" stems
+        def sort_key(stem):
+            order = {
+                'vocals': 0,
+                'bass': 1,
+                'drums': 2,
+                'guitar': 3,
+                'piano': 4,
+                'other': 5
+            }
+            
+            # Check if it's a "no_*" stem
+            if stem.startswith('no_'):
+                # Sort no_* stems after their positive counterparts
+                base_stem = stem[3:]  # Remove 'no_' prefix
+                base_order = order.get(base_stem, 999)
+                return base_order + 100
+            else:
+                return order.get(stem, 999)
+        
+        available_stems.sort(key=sort_key)
+        
+        return jsonify({'stems': available_stems}), 200
+        
+    except Exception as e:
+        logger.error(f"Get streams error: {str(e)}", exc_info=True)
+        return jsonify({'error': 'Internal server error'}), 500
+
+
 @app.route('/api/jobs', methods=['GET'])
 def list_jobs():
     """

@@ -58,23 +58,6 @@ help: ## Display available targets
 
 .PHONY:
 .SILENT:
-run-local: init build ## Run demucs to split the specified track in the input folder
-	@echo $(docker-local-run-command) $(demucs-command)
-	@cd server && $(docker-local-run-command) $(demucs-command)
-
-.PHONY:
-.SILENT:
-run: init build ## Run demucs to split the specified track in the input folder
-	@echo $(docker-run-command) $(demucs-command)
-	@cd server && $(docker-run-command) $(demucs-command)
-
-.PHONY:
-.SILENT:
-run-interactive: init build ## Run the docker container interactively to experiment with demucs options
-	$(docker-local-run-command) /bin/bash
-
-.PHONY:
-.SILENT:
 check: ## Check system prerequisites for running demucs
 	@./scripts/check-prerequisites.sh
 
@@ -208,3 +191,10 @@ pull: ## Pull the production web server image from Docker Hub
 	@docker pull higginsrob/demucs-base:latest
 	@docker pull higginsrob/yt-dlp:latest
 	@echo "Server image pulled successfully!"
+
+.PHONY:
+.SILENT:
+landing-page: 
+	@echo "Serving landing page..."
+	@cd landing-page && npx http-server .
+	# @cd landing-page && python3 -m http.server 8080

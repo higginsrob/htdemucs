@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTDemucs - AI Audio Source Separation</title>
+    
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-V2W9NLJP1F"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-V2W9NLJP1F');
+    </script>
+    
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <meta name="description" content="AI-powered audio source separation using Demucs. Split music into stems (bass, drums, vocals, other) with Docker.">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <span class="logo">🎵</span>
+                <span class="brand-name">HTDemucs</span>
+            </div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#getting-started">Get Started</a>
+                <a href="#videos">Videos</a>
+                <a href="#docker-commands">Docker</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <h1 class="hero-title">AI-Powered Audio Source Separation</h1>
+                <p class="hero-subtitle">Split music tracks into separate stems using the Demucs AI technology. Extract vocals, bass, drums, and other instruments with just a Docker command.</p>
+                <div class="hero-badges">
+                    <div class="badge">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/>
+                            <circle cx="12" cy="12" r="3"/>
+                        </svg>
+                        <span>Open Source</span>
+                    </div>
+                    <div class="badge">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                            <path d="M9 3v18M3 9h18"/>
+                        </svg>
+                        <span>Docker Ready</span>
+                    </div>
+                    <div class="badge">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                            <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2Z"/>
+                            <polyline points="14 2 14 8 20 8"/>
+                            <line x1="12" y1="18" x2="12" y2="12"/>
+                            <line x1="9" y1="15" x2="15" y2="15"/>
+                        </svg>
+                        <span>Web Interface</span>
+                    </div>
+                </div>
+                <div class="hero-actions">
+                    <a href="https://github.com/higginsrob/htdemucs" class="btn btn-primary" target="_blank">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+                        </svg>
+                        View on GitHub
+                    </a>
+                    <a href="https://hub.docker.com/r/higginsrob/htdemucs" class="btn btn-secondary" target="_blank">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M13.983 18.782l1.75-3.27h-3.466l1.75 3.27h-0.034zm6.3-5.616h3.484l-1.716 3.27H18.8l1.75-3.27h-0.267zm-5.564-3.764h2.033l.9 3.57-.9 3.57H13.434l-.9-3.57.9-3.57-.015zm-8.015-5.718c-0.25-0.083-0.55-0.083-0.8 0L2.833 9.5c-0.25 0.083-0.45 0.3-0.5 0.55 0 0.083 0 0.133 0 0.2v4.5c0 0.25 0.15 0.5 0.4 0.65l2.7 1.5c0.083 0.05 0.2 0.083 0.3 0.083 0.1 0 0.2-0.033 0.283-0.083l2.7-1.5c0.25-0.15 0.4-0.4 0.4-0.65v-4.5c0-0.25-0.15-0.5-0.4-0.65l-2.7-1.5zm0.45 0.9l2.2 1.22v4.18l-2.2 1.22-2.2-1.22V9.462l2.2-1.22zM7.2 11.7c-0.25-0.1-0.55-0.083-0.767 0.05L2.567 14.3c-0.25 0.15-0.417 0.417-0.5 0.7 0 0.1 0 0.183 0 0.283v4.533c0 0.267 0.167 0.517 0.417 0.667l2.867 1.583c0.083 0.05 0.2 0.083 0.3 0.083 0.1 0 0.217-0.033 0.3-0.083l2.867-1.583c0.25-0.15 0.417-0.4 0.417-0.667v-4.533c0-0.267-0.167-0.517-0.417-0.667l-2.867-1.583c-0.083-0.05-0.183-0.083-0.3-0.083s-0.217 0.033-0.3 0.083zm0.85 0.483l2.367 1.317v4.017l-2.367 1.3-2.367-1.3v-4.017l2.367-1.317z"/>
+                        </svg>
+                        Docker Hub
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="features">
+        <div class="container">
+            <h2 class="section-title">What Can Demucs Do?</h2>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">🎤</div>
+                    <h3>Extract Vocals</h3>
+                    <p>Isolate vocals from any song for karaoke or remixing purposes.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🥁</div>
+                    <h3>Separate Drums</h3>
+                    <p>Extract drum tracks for remixing or learning drum patterns.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎸</div>
+                    <h3>Isolate Instruments</h3>
+                    <p>Separate bass, guitar, piano, and other instruments with AI precision.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎬</div>
+                    <h3>YouTube Support</h3>
+                    <p>Download and process audio directly from YouTube videos.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">⚡</div>
+                    <h3>Real-Time Progress</h3>
+                    <p>Watch your audio being separated with live progress updates.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">🎚️</div>
+                    <h3>Audio Player</h3>
+                    <p>Play and mix separated stems with individual volume controls.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Getting Started Section -->
+    <section id="getting-started" class="getting-started">
+        <div class="container">
+            <h2 class="section-title">Getting Started</h2>
+            <div class="start-content">
+                <div class="start-text">
+                    <h3>Quick Start with Docker</h3>
+                    <p>Get started in seconds with our pre-built Docker image. Just mount your input and output folders and you're ready to go!</p>
+                    
+                    <div class="info-box">
+                        <strong>📋 Prerequisites:</strong>
+                        <ul>
+                            <li>Docker installed and running</li>
+                            <li>4GB+ RAM recommended</li>
+                            <li>Optional: NVIDIA GPU for faster processing</li>
+                        </ul>
+                    </div>
+
+                    <h4>Basic Usage</h4>
+                    <div class="code-block">
+                        <div class="code-header">Basic Docker Command</div>
+                        <pre><code># Pull the image
+docker pull higginsrob/htdemucs:latest
+
+# Run the server
+docker run -d --rm \
+  --name htdemucs \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest</code></pre>
+                    </div>
+
+                    <p class="mt-2">Then open <code>http://localhost:8080</code> in your browser!</p>
+
+                    <h4>With GPU Support (NVIDIA)</h4>
+                    <div class="code-block">
+                        <div class="code-header">Docker with GPU</div>
+                        <pre><code>docker run -d --rm \
+  --name htdemucs \
+  --gpus all \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest</code></pre>
+                    </div>
+
+                    <h4>Folder Setup Explained</h4>
+                    <div class="folder-explanation">
+                        <div class="folder-item">
+                            <span class="folder-label">Input Folder</span>
+                            <span class="folder-description">Place your audio files here. Supported formats: MP3, WAV, FLAC, M4A</span>
+                        </div>
+                        <div class="folder-item">
+                            <span class="folder-label">Output Folder</span>
+                            <span class="folder-description">Separated stems will be saved here in organized folders by model type</span>
+                        </div>
+                        <div class="folder-item">
+                            <span class="folder-label">Models Folder</span>
+                            <span class="folder-description">AI models are cached here to avoid re-downloading on each run</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Docker Commands Section -->
+    <section id="docker-commands" class="docker-commands">
+        <div class="container">
+            <h2 class="section-title">Docker Commands Reference</h2>
+            <div class="commands-grid">
+                <div class="command-card">
+                    <div class="command-title">🚀 Development Mode</div>
+                    <div class="code-block">
+                        <pre><code># Hot reload enabled
+docker run --rm \
+  --name htdemucs \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  -v $(pwd)/server/static:/app/static \
+  higginsrob/htdemucs:latest</code></pre>
+                    </div>
+                    <p>Use this for development. Static files are live-mounted for hot reload.</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-title">🏭 Production Mode</div>
+                    <div class="code-block">
+                        <pre><code># Runs in background
+docker run -d --rm \
+  --name htdemucs \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest</code></pre>
+                    </div>
+                    <p>Production deployment. Add <code>-d</code> to run in background.</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-title">🎮 GPU Accelerated</div>
+                    <div class="code-block">
+                        <pre><code># NVIDIA GPU required
+docker run -d --rm \
+  --name htdemucs \
+  --gpus all \
+  -p 8080:8080 \
+  -v $(pwd)/output:/app/output \
+  -v $(pwd)/models:/data/models \
+  higginsrob/htdemucs:latest</code></pre>
+                    </div>
+                    <p>For NVIDIA GPUs with CUDA support. Significantly faster processing.</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-title">📊 View Logs</div>
+                    <div class="code-block">
+                        <pre><code># View real-time logs
+docker logs -f htdemucs
+
+# View last 100 lines
+docker logs --tail 100 htdemucs</code></pre>
+                    </div>
+                    <p>Monitor processing and debug any issues.</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-title">🛑 Stop Server</div>
+                    <div class="code-block">
+                        <pre><code># Stop the container
+docker stop htdemucs
+
+# Remove volumes (optional)
+docker rm htdemucs</code></pre>
+                    </div>
+                    <p>Stop the running container when done.</p>
+                </div>
+
+                <div class="command-card">
+                    <div class="command-title">🔄 Restart Server</div>
+                    <div class="code-block">
+                        <pre><code># Restart with same settings
+docker restart htdemucs
+
+# Or rebuild and restart
+docker stop htdemucs
+docker run -d --rm ... # (your config)</code></pre>
+                    </div>
+                    <p>Restart the service without losing data.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Videos Section -->
+    <section id="videos" class="videos">
+        <div class="container">
+            <h2 class="section-title">Watch & Learn</h2>
+            <p class="section-subtitle">Tutorials, demos, and examples from our YouTube channel</p>
+            
+            <div id="api-key-warning" class="warning-box hidden">
+                <h4>⚠️ YouTube API Key Required</h4>
+                <p>To display videos from the YouTube channel, you need to set up a YouTube Data API v3 key.</p>
+                <ol>
+                    <li>Go to <a href="https://console.cloud.google.com/apis/credentials" target="_blank">Google Cloud Console</a></li>
+                    <li>Create a new project or select existing one</li>
+                    <li>Enable the "YouTube Data API v3"</li>
+                    <li>Create credentials (API key)</li>
+                    <li>Update the API key in <code>script.js</code></li>
+                </ol>
+                <p>Channel ID: <code>UC7-Mf5EnfDVBr8tziq8s1-g</code></p>
+            </div>
+
+            <div id="videos-loading" class="loading">
+                <div class="spinner"></div>
+                <p>Loading videos from YouTube channel...</p>
+            </div>
+
+            <div id="videos-container" class="videos-grid"></div>
+        </div>
+    </section>
+
+    <!-- Lightbox -->
+    <div id="lightbox" class="lightbox hidden">
+        <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+        <div class="lightbox-content">
+            <button class="lightbox-close" onclick="closeLightbox()">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
+            <div id="lightbox-body"></div>
+        </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h4>Resources</h4>
+                    <ul>
+                        <li><a href="https://github.com/higginsrob/htdemucs" target="_blank">GitHub Repository</a></li>
+                        <li><a href="https://hub.docker.com/r/higginsrob/htdemucs" target="_blank">Docker Hub</a></li>
+                        <li><a href="https://github.com/adefossez/demucs" target="_blank">Demucs Project</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>Powered By</h4>
+                    <ul>
+                        <li><a href="https://github.com/adefossez/demucs" target="_blank">Demucs</a></li>
+                        <li><a href="https://pytorch.org/" target="_blank">PyTorch</a></li>
+                        <li><a href="https://www.docker.com/" target="_blank">Docker</a></li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h4>License</h4>
+                    <p>This project is released under the MIT license.</p>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2024 HTDemucs. Built with ❤️ for the music community.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
+

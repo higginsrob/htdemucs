@@ -104,18 +104,18 @@ async function loadVideos() {
         if (loadingElement) loadingElement.classList.add('hidden');
         
         // Show error message
-        if (container) {
-            container.innerHTML = `
-                <div style="text-align: center; padding: 2rem;">
-                    <p style="color: var(--danger); margin-bottom: 1rem;">
-                        Failed to load videos: ${error.message}
-                    </p>
-                    <p style="color: var(--text-muted);">
-                        Please check your API key in script.js
-                    </p>
-                </div>
-            `;
-        }
+        // if (container) {
+        //     container.innerHTML = `
+        //         <div style="text-align: center; padding: 2rem;">
+        //             <p style="color: var(--danger); margin-bottom: 1rem;">
+        //                 Failed to load videos: ${error.message}
+        //             </p>
+        //             <p style="color: var(--text-muted);">
+        //                 Please check your API key in script.js
+        //             </p>
+        //         </div>
+        //     `;
+        // }
     }
 }
 

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Prerequisites Checker for Demucs Development
+# Prerequisites Checker for HTDemucs
 # Checks system requirements and provides helpful information
 
 # Colors for output
@@ -10,8 +10,8 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo "🔧 Demucs Development Prerequisites Check"
-echo "=========================================="
+echo "🔧 HTDemucs System Check"
+echo "========================="
 echo ""
 
 # Check Docker
@@ -41,7 +41,18 @@ if command -v make &> /dev/null; then
     echo -e "${GREEN}✓${NC} Installed (version $MAKE_VERSION)"
 else
     echo -e "${RED}✗${NC} Not installed"
-    echo "  └─ Install with: brew install make"
+    echo "  └─ Install with: brew install make (macOS) or apt-get install build-essential (Linux)"
+fi
+
+echo ""
+
+# Check Python 3 (needed for landing page server)
+echo -n "Python 3: "
+if command -v python3 &> /dev/null; then
+    PYTHON_VERSION=$(python3 --version | cut -d ' ' -f2)
+    echo -e "${GREEN}✓${NC} Installed (version $PYTHON_VERSION)"
+else
+    echo -e "${YELLOW}⚠${NC} Not installed (needed for 'make gh-page')"
 fi
 
 echo ""
@@ -98,47 +109,78 @@ fi
 
 echo ""
 
-# Check Docker images
-echo "Demucs Docker Images:"
-BASE_FOUND=false
-SERVER_FOUND=false
-
-if docker image inspect higginsrob/htdemucs:demucs > /dev/null 2>&1; then
-    SIZE=$(docker image inspect higginsrob/htdemucs:demucs --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
-    printf "  Base (CLI):   ${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
-    BASE_FOUND=true
+# Check port availability
+echo -n "Port 8080: "
+if lsof -Pi :8080 -sTCP:LISTEN -t > /dev/null 2>&1; then
+    PROCESS=$(lsof -Pi :8080 -sTCP:LISTEN | grep -v COMMAND | awk '{print $1}')
+    echo -e "${YELLOW}⚠${NC} In use by $PROCESS"
+    echo "  └─ Run 'make stop' to free the port, or the server won't start"
 else
-    echo -e "  Base (CLI):   ${YELLOW}⚠${NC} Not built yet"
-    echo "                └─ Run 'make build' to build the base image"
-fi
-
-if docker image inspect higginsrob/htdemucs:latest > /dev/null 2>&1; then
-    SIZE=$(docker image inspect higginsrob/htdemucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
-    printf "  Server (Web): ${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
-    SERVER_FOUND=true
-else
-    echo -e "  Server (Web): ${YELLOW}⚠${NC} Not built yet"
-    echo "                └─ Run 'make server-build' to build the server image"
-fi
-
-# Check for old image
-if docker image inspect xserrat/facebook-demucs:latest > /dev/null 2>&1; then
-    echo -e "  ${YELLOW}⚠${NC} Old image (xserrat/facebook-demucs:latest) found"
-    echo "     └─ Run 'make clean-docker' to remove old images"
+    echo -e "${GREEN}✓${NC} Available"
 fi
 
 echo ""
+
+# Check Docker images
+echo "Docker Images:"
+echo -n "  higginsrob/demucs-base:latest: "
+if docker image inspect higginsrob/demucs-base:latest > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/demucs-base:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+else
+    echo -e "${YELLOW}⚠${NC} Not found"
+fi
+
+echo -n "  higginsrob/yt-dlp:latest: "
+if docker image inspect higginsrob/yt-dlp:latest > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/yt-dlp:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+else
+    echo -e "${YELLOW}⚠${NC} Not found"
+fi
+
+echo -n "  higginsrob/htdemucs:local: "
+if docker image inspect higginsrob/htdemucs:local > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/htdemucs:local --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+else
+    echo -e "${YELLOW}⚠${NC} Not found"
+    echo "                         └─ Run 'make build' to build the image"
+fi
+
+echo -n "  higginsrob/htdemucs:latest: "
+if docker image inspect higginsrob/htdemucs:latest > /dev/null 2>&1; then
+    SIZE=$(docker image inspect higginsrob/htdemucs:latest --format='{{.Size}}' | awk '{print $1/1024/1024/1024}')
+    printf "${GREEN}✓${NC} Built (%.2fGB)\n" "$SIZE"
+else
+    echo -e "${YELLOW}⚠${NC} Not found"
+    echo "                          └─ Run 'make pull' to pull from Docker Hub"
+fi
+
+echo ""
+
+# Check if server is running
+if docker ps --format '{{.Names}}' | grep -q "^demucs$"; then
+    echo "=========================================="
+    echo -e "${GREEN}✓ Server is running${NC}"
+    echo "  └─ Access at: http://localhost:8080"
+    echo "  └─ Stop with: make stop"
+    echo ""
+fi
 
 # Summary
 echo "=========================================="
 echo -e "${BLUE}Quick Start Commands:${NC}"
-echo "  make build              # Build Docker image"
-echo "  make run track=test.mp3 # Process audio file"
-echo "  make run-interactive    # Open shell in container"
+echo "  make build              # Build Docker images"
+echo "  make dev                # Run in development mode"
+echo "  make run                # Run production server"
+echo "  make stop               # Stop running server"
+echo "  make gh-page            # Serve landing page locally"
 echo "  make help               # Show all commands"
 echo ""
 echo -e "${BLUE}Documentation:${NC}"
-echo "  .cursor/rules.md        # Project rules and guidelines"
-echo "  README.md               # User documentation"
+echo "  README.md               # Main documentation"
+echo "  landing-page/README.md  # Landing page docs"
+echo "  .cursor/rules.md        # Project guidelines"
 echo ""
 
